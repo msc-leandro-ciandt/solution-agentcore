@@ -13,7 +13,7 @@ backend:
   #   langgraph-* → LangGraph parser  (e.g. langgraph-single-agent)
   #   claude-*    → Claude parser     (e.g. claude-agent-sdk-single-agent)
   # The folder name must match exactly and start with the desired parser prefix.
-  deployment_type: docker # Available deployment types: docker (default), zip (not supported for claude-agent-sdk)
+  deployment_type: zip # Available deployment types: docker (default), zip (not supported for claude-agent-sdk)
   network_mode: PUBLIC # Available network modes: PUBLIC (default), VPC
 
   # Long-term memory uses a SemanticMemoryStrategy to extract and store facts across sessions.

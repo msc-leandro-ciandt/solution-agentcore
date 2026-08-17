@@ -21,6 +21,13 @@ export class FastMainStack extends cdk.Stack {
       "Fullstack AgentCore Solution Template - Main Stack (v0.4.2) (uksb-v6dos0t5g8)"
     super(scope, id, { ...props, description })
 
+    // Apply tags to all resources in this stack
+    cdk.Tags.of(this).add("Project", "JurisConsult")
+    cdk.Tags.of(this).add("Environment", "Development")
+    cdk.Tags.of(this).add("Owner", "Leandro Pereira da Silva")
+    cdk.Tags.of(this).add("ManagedBy", "AWS CDK")
+    cdk.Tags.of(this).add("Purpose", "Consulta de Processos Judiciais")
+
     // Step 1: Create the Amplify construct to get the predictable domain
     this.amplifyHosting = new AmplifyHostingConstruct(this, `${id}-amplify`, {
       config: props.config,

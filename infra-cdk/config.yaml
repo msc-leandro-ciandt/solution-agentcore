@@ -34,3 +34,25 @@ backend:
   #     - subnet-cccc3333dddd4444e
   #   security_group_ids:  # Optional - a default SG is created if omitted
   #     - sg-0abc1234def56789a
+
+# Judicial case monitoring: adds a Gateway chat tool (consultar_processo_judicial)
+# and a daily digest email, both backed by the public DataJud (CNJ) API.
+# Omit this whole "monitoring" section to disable the feature entirely.
+monitoring:
+  # Email addresses that receive the daily digest via Amazon SES.
+  # NOTE: Your AWS account is in SES sandbox mode, so each address below must
+  # click a one-time verification link emailed by AWS after the first deploy.
+  notification_emails:
+    - leanpsilva@gmail.com
+    - renatahellensouzagarcia@gmail.com
+  # EventBridge Scheduler cron expression (UTC). 11:00 UTC = 08:00 America/Sao_Paulo.
+  digest_schedule_cron: "cron(0 11 * * ? *)"
+  # Judicial cases to monitor. tribunal must be a DataJud alias: tjrs or tjsc.
+  # numero_processo must be the CNJ unique case number (format NNNNNNN-DD.AAAA.J.TR.OOOO).
+  processes:
+    - label: "Processo TJSC"
+      tribunal: tjsc
+      numero_processo: "5084844-64.2026.8.24.0930"
+    - label: "Processo TJRS"
+      tribunal: tjrs
+      numero_processo: "5015749-78.2026.8.21.0008"

@@ -1,0 +1,3 @@
+# Boto3 is included in the Python Lambda runtime, so it's unnecessary to include it here.
+# This Lambda has no third-party dependencies — only the Python standard
+# library (urllib, json) and boto3 (SSM, DynamoDB, SES) are used.

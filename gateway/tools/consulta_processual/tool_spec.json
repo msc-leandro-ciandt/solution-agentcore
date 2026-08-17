@@ -1,0 +1,16 @@
+[
+  {
+    "name": "consultar_processo_judicial",
+    "description": "Consulta o status e as movimentações mais recentes de um processo judicial monitorado (TJSC ou TJRS), usando a API Pública do DataJud (CNJ). Se nenhum número de processo for informado, retorna o resumo de todos os processos monitorados.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "numero_processo": {
+          "type": "string",
+          "description": "Número único CNJ do processo a consultar, no formato NNNNNNN-DD.AAAA.J.TR.OOOO (ex: 5084844-64.2026.8.24.0930). Opcional — se omitido, retorna todos os processos monitorados."
+        }
+      },
+      "required": []
+    }
+  }
+]

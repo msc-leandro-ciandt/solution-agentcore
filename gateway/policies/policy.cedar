@@ -36,11 +36,23 @@
 // ========================================
 // VERSION 1: Guest Has Full Access (Testing "Allow" Case)
 // ========================================
-// All departments (finance, engineering, guest) can access the tool.
+// All departments (finance, engineering, guest) can access the tools below.
+//
+// NOTE: The consulta-processual-target___consultar_processo_judicial action
+// (judicial case monitoring chat tool, added for the JurisConsult family use
+// case) is intentionally grouped into this SAME statement via "action in [...]".
+// The Custom Resource Lambda (infra-cdk/lambdas/cedar-policy/index.py) creates
+// exactly one Cedar policy per deploy containing one statement — grouping
+// actions here avoids needing to modify that Lambda to support multiple
+// create_policy calls. Both Leandro and Renata are parties to both monitored
+// cases, so shared access (no per-user restriction) is correct for this tool.
 
 permit(
   principal is AgentCore::OAuthUser,
-  action == AgentCore::Action::"sample-tool-target___text_analysis_tool",
+  action in [
+    AgentCore::Action::"sample-tool-target___text_analysis_tool",
+    AgentCore::Action::"consulta-processual-target___consultar_processo_judicial"
+  ],
   resource == AgentCore::Gateway::"{{GATEWAY_ARN}}"
 )
 when {

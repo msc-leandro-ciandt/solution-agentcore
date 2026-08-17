@@ -26,9 +26,39 @@ export interface VpcConfig {
   security_group_ids?: string[]
 }
 
+/**
+ * A single judicial case tracked by the consulta-processual Gateway tool and
+ * the daily digest email. numero_processo must be the CNJ unique case number
+ * (format NNNNNNN-DD.AAAA.J.TR.OOOO).
+ */
+export interface MonitoredProcess {
+  /** Human-friendly label shown in the chat and email (e.g. "Processo TJSC"). */
+  label: string
+  /** Lowercase DataJud tribunal alias (e.g. "tjrs", "tjsc"). */
+  tribunal: string
+  /** CNJ unique case number, e.g. "5084844-64.2026.8.24.0930". */
+  numero_processo: string
+}
+
+/**
+ * Configuration for the judicial case monitoring feature: the Gateway chat
+ * tool and the daily digest email. Optional — omit the "monitoring" key in
+ * config.yaml entirely to disable this feature.
+ */
+export interface MonitoringConfig {
+  /** Email addresses that receive the daily digest via Amazon SES. */
+  notification_emails: string[]
+  /** EventBridge Scheduler cron expression for the daily digest, e.g. "cron(0 11 * * ? *)". */
+  digest_schedule_cron: string
+  /** List of judicial cases to monitor. */
+  processes: MonitoredProcess[]
+}
+
 export interface AppConfig {
   stack_name_base: string
   admin_user_email?: string | null
+  /** Judicial case monitoring feature configuration. Omit to disable. */
+  monitoring?: MonitoringConfig | null
   backend: {
     pattern: string
     deployment_type: DeploymentType
@@ -137,9 +167,12 @@ export class ConfigManager {
         }
       }
 
+      const monitoringConfig = this._validateMonitoringConfig(parsedConfig.monitoring, configPath)
+
       return {
         stack_name_base: stackNameBase,
         admin_user_email: parsedConfig.admin_user_email || null,
+        monitoring: monitoringConfig,
         backend: {
           pattern: parsedConfig.backend?.pattern || "strands-single-agent",
           deployment_type: deploymentType,
@@ -153,6 +186,92 @@ export class ConfigManager {
       }
     } catch (error) {
       throw new Error(`Failed to parse configuration file ${configPath}: ${error}`)
+    }
+  }
+
+  /**
+   * Validates the optional "monitoring" section of config.yaml, which
+   * configures the judicial case monitoring Gateway tool and daily digest
+   * email feature.
+   *
+   * @param rawMonitoring - The raw, unvalidated "monitoring" value parsed
+   *   from YAML, or undefined/null if the section is omitted.
+   * @param configPath - Path to the config file, used only for error messages.
+   * @returns The validated MonitoringConfig, or null if the feature is disabled
+   *   (i.e. the "monitoring" key was omitted from config.yaml).
+   * @throws Error if the section is present but malformed (missing fields,
+   *   invalid case number format, unsupported tribunal, etc).
+   */
+  private _validateMonitoringConfig(
+    rawMonitoring: unknown,
+    configPath: string
+  ): MonitoringConfig | null {
+    if (!rawMonitoring) {
+      return null
+    }
+
+    const monitoring = rawMonitoring as Partial<MonitoringConfig>
+
+    if (
+      !Array.isArray(monitoring.notification_emails) ||
+      monitoring.notification_emails.length === 0
+    ) {
+      throw new Error(
+        `monitoring.notification_emails must be a non-empty list of email addresses in ${configPath}`
+      )
+    }
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    for (const email of monitoring.notification_emails) {
+      if (typeof email !== "string" || !emailPattern.test(email)) {
+        throw new Error(`Invalid email address '${email}' in monitoring.notification_emails`)
+      }
+    }
+
+    if (
+      typeof monitoring.digest_schedule_cron !== "string" ||
+      !monitoring.digest_schedule_cron.startsWith("cron(")
+    ) {
+      throw new Error(
+        `monitoring.digest_schedule_cron must be a valid EventBridge cron expression ` +
+          `(e.g. "cron(0 11 * * ? *)") in ${configPath}`
+      )
+    }
+
+    if (!Array.isArray(monitoring.processes) || monitoring.processes.length === 0) {
+      throw new Error(
+        `monitoring.processes must be a non-empty list of monitored cases in ${configPath}`
+      )
+    }
+
+    // CNJ unique case number format: NNNNNNN-DD.AAAA.J.TR.OOOO
+    const cnjCaseNumberPattern = /^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/
+    const supportedTribunals = new Set(["tjrs", "tjsc"])
+
+    for (const process of monitoring.processes) {
+      if (!process.label || !process.tribunal || !process.numero_processo) {
+        throw new Error(
+          `Each entry in monitoring.processes must have "label", "tribunal", and ` +
+            `"numero_processo" in ${configPath}`
+        )
+      }
+      if (!supportedTribunals.has(process.tribunal)) {
+        throw new Error(
+          `Unsupported tribunal '${process.tribunal}' in monitoring.processes. ` +
+            `Supported values: ${Array.from(supportedTribunals).join(", ")}`
+        )
+      }
+      if (!cnjCaseNumberPattern.test(process.numero_processo)) {
+        throw new Error(
+          `Invalid numero_processo '${process.numero_processo}' in monitoring.processes. ` +
+            `Expected CNJ format: NNNNNNN-DD.AAAA.J.TR.OOOO`
+        )
+      }
+    }
+
+    return {
+      notification_emails: monitoring.notification_emails,
+      digest_schedule_cron: monitoring.digest_schedule_cron,
+      processes: monitoring.processes,
     }
   }
 

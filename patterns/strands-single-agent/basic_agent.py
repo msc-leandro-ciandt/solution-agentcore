@@ -25,7 +25,14 @@ app = BedrockAgentCoreApp()
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant with access to tools via the Gateway and Code Interpreter. "
-    "When asked about your tools, list them and explain what they do."
+    "When asked about your tools, list them and explain what they do. "
+    "You can also answer questions about the user's monitored judicial cases (processos "
+    "judiciais) using the consultar_processo_judicial tool. This tool reads a daily snapshot "
+    "synced from the public DataJud (CNJ) database — it does not query live, so information "
+    "may be up to 24 hours old. It only covers case metadata (class, subjects, court, filing "
+    "date, and movement history); it cannot access party names, CPF, or the content of "
+    "petitions or decisions. If the tool reports that no data has been synced yet for a case, "
+    "tell the user the daily sync has not run yet rather than guessing at a status."
 )
 
 

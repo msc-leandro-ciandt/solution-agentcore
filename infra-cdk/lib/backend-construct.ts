@@ -13,6 +13,10 @@ import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha"
 import * as lambda from "aws-cdk-lib/aws-lambda"
 import * as ecr_assets from "aws-cdk-lib/aws-ecr-assets"
 import * as cr from "aws-cdk-lib/custom-resources"
+import * as ses from "aws-cdk-lib/aws-ses"
+import * as scheduler from "aws-cdk-lib/aws-scheduler"
+import { ScheduleExpression } from "aws-cdk-lib/aws-scheduler"
+import { LambdaInvoke } from "aws-cdk-lib/aws-scheduler-targets"
 import { Construct } from "constructs"
 import { AppConfig } from "./utils/config-manager"
 import { AgentCoreRole } from "./utils/agentcore-role"
@@ -41,6 +45,11 @@ export class BackendConstruct extends Construct {
   private machineClientSecret: secretsmanager.Secret
   private runtimeCredentialProvider: cdk.CustomResource
   private agentRuntime: agentcore.Runtime
+  // DynamoDB cache of the latest DataJud snapshot per monitored judicial case.
+  // Populated once/day by the process-digest Lambda; read (never written) by
+  // the consulta-processual Gateway tool Lambda. Undefined when config.yaml
+  // has no "monitoring" section. See createMonitoringDigestTable().
+  private processDigestTable?: dynamodb.Table
 
   constructor(scope: Construct, id: string, props: BackendConstructProps) {
     super(scope, id)
@@ -80,8 +89,21 @@ export class BackendConstruct extends Construct {
     // the gateway that depends on them, while keeping the runtime separate
     // since it doesn't directly depend on the gateway.
 
+    // Create the judicial case monitoring DynamoDB table before the Gateway,
+    // since the consulta-processual Gateway target (created inside
+    // createAgentCoreGateway) needs to grant read access to this table.
+    if (props.config.monitoring) {
+      this.processDigestTable = this.createProcessDigestTable(props.config)
+    }
+
     // Create AgentCore Gateway (before Runtime)
     this.createAgentCoreGateway(props.config)
+
+    // Create the daily judicial case digest: SES email identities, the
+    // process-digest Lambda, and the EventBridge Scheduler that triggers it.
+    if (props.config.monitoring) {
+      this.createMonitoringDigest(props.config)
+    }
 
     // Create AgentCore Runtime resources
     this.createAgentCoreRuntime(props.config)
@@ -481,6 +503,35 @@ export class BackendConstruct extends Construct {
     })
   }
 
+  /**
+   * Creates the DynamoDB table that caches the latest DataJud snapshot for
+   * each monitored judicial case.
+   *
+   * Write path: the process-digest Lambda (infra-cdk/lambdas/process-digest/index.py)
+   * writes one item per case, once per day, on the schedule configured in
+   * config.yaml's monitoring.digest_schedule_cron.
+   *
+   * Read path: the consulta-processual Gateway tool Lambda
+   * (gateway/tools/consulta_processual/consulta_processual_lambda.py) reads
+   * these cached items to answer chat questions — it never calls the DataJud
+   * API directly. See PLAN_CONSULTA_PROCESSOS.md for the rationale.
+   *
+   * @param config - The application configuration from config.yaml.
+   * @returns The created DynamoDB table.
+   */
+  private createProcessDigestTable(config: AppConfig): dynamodb.Table {
+    return new dynamodb.Table(this, "ProcessDigestTable", {
+      tableName: `${config.stack_name_base}-process-digest`,
+      partitionKey: {
+        name: "numero_processo",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    })
+  }
+
   // Creates a DynamoDB table for storing user feedback.
   private createFeedbackTable(config: AppConfig): dynamodb.Table {
     const feedbackTable = new dynamodb.Table(this, "FeedbackTable", {
@@ -857,6 +908,14 @@ export class BackendConstruct extends Construct {
     gateway.node.addDependency(this.machineClient)
     gateway.node.addDependency(gatewayRole)
 
+    // Optional second Gateway target: judicial case monitoring tool
+    // (consultar_processo_judicial). Only created when config.yaml has a
+    // "monitoring" section. See createConsultaProcessualTarget() for details.
+    let consultaProcessualTarget: agentcore.GatewayTarget | undefined
+    if (config.monitoring) {
+      consultaProcessualTarget = this.createConsultaProcessualTarget(config, gateway)
+    }
+
     // ========================================
     // Cedar Policy Engine + Policy via Custom Resource
     // ========================================
@@ -985,8 +1044,11 @@ export class BackendConstruct extends Construct {
       },
     })
 
-    // Policy must be created after the Gateway and its target are ready
+    // Policy must be created after the Gateway and its target(s) are ready
     cedarPolicy.node.addDependency(gatewayTarget)
+    if (consultaProcessualTarget) {
+      cedarPolicy.node.addDependency(consultaProcessualTarget)
+    }
 
     // Store AgentCore Gateway URL in SSM for AgentCore Runtime access
     new ssm.StringParameter(this, "GatewayUrlParam", {
@@ -1029,6 +1091,161 @@ export class BackendConstruct extends Construct {
     new cdk.CfnOutput(this, "CedarPolicyId", {
       description: "ID of the Cedar policy for department-based access control",
       value: cedarPolicy.getAttString("PolicyId"),
+    })
+  }
+
+  /**
+   * Creates the Gateway target for the judicial case monitoring chat tool
+   * (consultar_processo_judicial). Only called when config.yaml has a
+   * "monitoring" section.
+   *
+   * The Lambda backing this target reads cached DataJud snapshots from the
+   * ProcessDigestTable (populated separately, once per day, by the
+   * process-digest Lambda) — it does not call any external API itself, so it
+   * needs no internet egress and no DataJud credentials. See
+   * gateway/tools/consulta_processual/consulta_processual_lambda.py and
+   * PLAN_CONSULTA_PROCESSOS.md for the full rationale.
+   *
+   * @param config - The application configuration from config.yaml. Must have
+   *   config.monitoring set (validated by the caller).
+   * @param gateway - The AgentCore Gateway to attach this target to.
+   * @returns The created GatewayTarget.
+   */
+  private createConsultaProcessualTarget(
+    config: AppConfig,
+    gateway: agentcore.Gateway
+  ): agentcore.GatewayTarget {
+    const monitoring = config.monitoring!
+    if (!this.processDigestTable) {
+      throw new Error(
+        "createConsultaProcessualTarget() requires processDigestTable to be created first"
+      )
+    }
+
+    const consultaProcessualLambda = new lambda.Function(this, "ConsultaProcessualLambda", {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: "consulta_processual_lambda.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../../gateway/tools/consulta_processual") // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+      ),
+      timeout: cdk.Duration.seconds(10),
+      environment: {
+        PROCESSOS_MONITORADOS: JSON.stringify(monitoring.processes),
+        DIGEST_STATE_TABLE_NAME: this.processDigestTable.tableName,
+      },
+      logGroup: new logs.LogGroup(this, "ConsultaProcessualLambdaLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-consulta-processual`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // Read-only access to the cached case snapshots — no internet egress,
+    // no DataJud credentials needed by this Lambda.
+    this.processDigestTable.grantReadData(consultaProcessualLambda)
+
+    const toolSpecPath = path.join(
+      __dirname,
+      "../../gateway/tools/consulta_processual/tool_spec.json" // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    )
+
+    return gateway.addLambdaTarget("ConsultaProcessualTarget", {
+      gatewayTargetName: "consulta-processual-target",
+      description: "Judicial case status lookup tool (cached DataJud snapshots)",
+      lambdaFunction: consultaProcessualLambda,
+      toolSchema: agentcore.ToolSchema.fromLocalAsset(toolSpecPath),
+    })
+  }
+
+  /**
+   * Creates the daily judicial case digest email feature: SES email
+   * identities (sandbox-mode verification required for each address), the
+   * process-digest Lambda (the only Lambda that calls the external DataJud
+   * API — see infra-cdk/lambdas/process-digest/index.py), an SSM parameter
+   * holding the DataJud Public API key, and the EventBridge Scheduler that
+   * triggers the Lambda once per day.
+   *
+   * Only called when config.yaml has a "monitoring" section.
+   *
+   * @param config - The application configuration from config.yaml. Must have
+   *   config.monitoring set (validated by the caller).
+   */
+  private createMonitoringDigest(config: AppConfig): void {
+    const monitoring = config.monitoring!
+    if (!this.processDigestTable) {
+      throw new Error("createMonitoringDigest() requires processDigestTable to be created first")
+    }
+
+    // SES sandbox mode requires verifying every recipient AND the sender.
+    // The first configured email doubles as the sender identity. Each
+    // address owner must click the verification link AWS emails them after
+    // this deploy — see docs printed in DEPLOYMENT_SUMMARY / user instructions.
+    const senderEmail = monitoring.notification_emails[0]
+    const emailIdentities = monitoring.notification_emails.map(
+      (email, index) => new ses.EmailIdentity(this, `NotificationEmailIdentity${index}`, {
+        identity: ses.Identity.email(email),
+      })
+    )
+
+    // The DataJud Public API key is a public credential published by the
+    // CNJ (not a per-account secret). Stored in SSM so it can be rotated
+    // without a code change if the CNJ ever reissues it.
+    // Source: https://datajud-wiki.cnj.jus.br/api-publica/acesso/
+    const datajudApiKeyParam = new ssm.StringParameter(this, "DataJudApiKeyParam", {
+      parameterName: `/${config.stack_name_base}/datajud_api_key`,
+      stringValue: "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw==",
+      description: "DataJud (CNJ) Public API key — public credential, rotatable without redeploy",
+    })
+
+    const processDigestLambda = new lambda.Function(this, "ProcessDigestLambda", {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(path.join(__dirname, "..", "lambdas", "process-digest")), // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+      timeout: cdk.Duration.minutes(2),
+      environment: {
+        PROCESSOS_MONITORADOS: JSON.stringify(monitoring.processes),
+        DIGEST_STATE_TABLE_NAME: this.processDigestTable.tableName,
+        DATAJUD_API_KEY_PARAM: datajudApiKeyParam.parameterName,
+        SENDER_EMAIL: senderEmail,
+        NOTIFICATION_EMAILS: JSON.stringify(monitoring.notification_emails),
+      },
+      logGroup: new logs.LogGroup(this, "ProcessDigestLambdaLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-process-digest`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // Read + write access — this Lambda both reads the previous state (to
+    // detect new movements) and writes the refreshed snapshot.
+    this.processDigestTable.grantReadWriteData(processDigestLambda)
+    datajudApiKeyParam.grantRead(processDigestLambda)
+
+    // Grant permission to send email. SES IAM authorization checks the
+    // identity ARN of the sender AND, when a recipient address is itself a
+    // verified EmailIdentity in the same account (as is the case here — both
+    // notification emails are registered as identities), the recipient's
+    // identity ARN too. Granting on every configured identity avoids
+    // AccessDeniedException on send.
+    for (const emailIdentity of emailIdentities) {
+      emailIdentity.grantSendEmail(processDigestLambda)
+    }
+
+    const schedulerRole = new iam.Role(this, "ProcessDigestSchedulerRole", {
+      assumedBy: new iam.ServicePrincipal("scheduler.amazonaws.com"),
+      description: "Role for EventBridge Scheduler to invoke the process-digest Lambda",
+    })
+    processDigestLambda.grantInvoke(schedulerRole)
+
+    new scheduler.Schedule(this, "ProcessDigestSchedule", {
+      schedule: ScheduleExpression.expression(monitoring.digest_schedule_cron),
+      target: new LambdaInvoke(processDigestLambda, { role: schedulerRole }),
+      description: "Triggers the daily judicial case digest email",
+    })
+
+    new cdk.CfnOutput(this, "ProcessDigestLambdaArn", {
+      description: "ARN of the daily judicial case digest Lambda (invoke manually to test)",
+      value: processDigestLambda.functionArn,
     })
   }
 

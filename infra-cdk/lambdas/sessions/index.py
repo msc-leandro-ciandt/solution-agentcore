@@ -347,7 +347,7 @@ def _delete_session_events_best_effort(user_id: str, session_id: str) -> None:
 def list_sessions() -> Any:
     """
     Handle GET /sessions — list the authenticated user's chat sessions.
-    
+
     Combines sessions from both DynamoDB (metadata) and AgentCore Memory (for resilience).
     Sessions in Memory but not in DynamoDB are included with minimal metadata.
     Sessions in DynamoDB are preferred (they have real names/timestamps).
@@ -399,7 +399,9 @@ def list_sessions() -> Any:
                         if session_id not in ddb_sessions:
                             memory_sessions[session_id] = {
                                 "sessionId": session_id,
-                                "name": f"Conversa em {created_at[:10]}" if created_at else "Conversa",
+                                "name": f"Conversa em {created_at[:10]}"
+                                if created_at
+                                else "Conversa",
                                 "createdAt": str(created_at) if created_at else "",
                                 "updatedAt": str(created_at) if created_at else "",
                             }
@@ -430,12 +432,16 @@ def get_session(session_id: str) -> Any:
     Handle GET /sessions/{sessionId} — return metadata plus full conversation
     history (read live from AgentCore Memory).
 
+    Handles both scenarios:
+    - Session in DynamoDB: use its metadata (name, timestamps)
+    - Session in Memory only: generate minimal metadata with system-generated name
+
     Args:
         session_id: The session ID from the URL path.
 
     Returns:
         Session metadata merged with a "messages" list, or 404 if the
-        session's metadata row does not exist for this user.
+        session does not exist in either DynamoDB or Memory.
     """
     user_id = _get_user_id()
     if not user_id:
@@ -445,23 +451,41 @@ def get_session(session_id: str) -> Any:
         return {"error": "Invalid sessionId"}, 400
 
     try:
+        # Try to read from DynamoDB first (preferred, has nice metadata)
         response = dynamodb.get_item(
             TableName=TABLE_NAME,
             Key={"userId": {"S": user_id}, "sessionId": {"S": session_id}},
         )
         item = response.get("Item")
-        if not item:
-            return {"error": "Session not found"}, 404
 
+        # Read messages from AgentCore Memory regardless
+        # (whether session has DynamoDB metadata or not)
         messages = _list_session_events_as_messages(user_id, session_id)
 
-        return {
-            "sessionId": item["sessionId"]["S"],
-            "name": item["name"]["S"],
-            "createdAt": item["createdAt"]["S"],
-            "updatedAt": item["updatedAt"]["S"],
-            "messages": messages,
-        }
+        if item:
+            # Session has DynamoDB metadata — use it
+            return {
+                "sessionId": item["sessionId"]["S"],
+                "name": item["name"]["S"],
+                "createdAt": item["createdAt"]["S"],
+                "updatedAt": item["updatedAt"]["S"],
+                "messages": messages,
+            }
+
+        # Session not in DynamoDB, but if it has messages in Memory, it exists
+        if messages:
+            # Generate minimal metadata from Memory
+            now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            return {
+                "sessionId": session_id,
+                "name": "Conversa anterior",
+                "createdAt": now_iso,
+                "updatedAt": now_iso,
+                "messages": messages,
+            }
+
+        # No DynamoDB metadata and no Memory messages — session truly doesn't exist
+        return {"error": "Session not found"}, 404
 
     except ClientError as e:
         logger.error(

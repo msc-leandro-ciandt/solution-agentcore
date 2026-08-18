@@ -118,19 +118,22 @@ export default function ChatPage() {
           `[ChatPage] localStorage BEFORE: ${localStorage.getItem(CURRENT_SESSION_STORAGE_KEY)}`
         )
 
-        // Set messages FIRST, then sessionId. Because isHydrating is still true,
-        // ChatInterface won't render yet. By the time it does (when isHydrating
-        // becomes false), both initialMessages and sessionId will be in sync.
-        setInitialMessages(loadedMessages)
+        // Persist FIRST, then update both states together
+        // The order ensures localStorage is synced with what we're about to render
         persistSessionId(session.sessionId)
-        console.log(
-          `[ChatPage] localStorage AFTER: ${localStorage.getItem(CURRENT_SESSION_STORAGE_KEY)}`
-        )
+        
+        // Both state updates happen together (in React's batch)
+        // since isHydrating is still true, ChatInterface won't render yet
+        setInitialMessages(loadedMessages)
         setSessionId(session.sessionId)
-        console.log(`[ChatPage] State sessionId set to: ${session.sessionId}`)
+        
+        console.log(`[ChatPage] localStorage NOW: ${localStorage.getItem(CURRENT_SESSION_STORAGE_KEY)}`)
+        console.log(`[ChatPage] Both states queued for update:`)
+        console.log(`[ChatPage]   - sessionId will become: ${session.sessionId}`)
+        console.log(`[ChatPage]   - initialMessages will have: ${loadedMessages.length} items`)
         console.log(`[ChatPage] ========== SESSION SELECTED ==========`)
 
-        // Now it's safe to show the new ChatInterface with fresh messages
+        // Now show ChatInterface with fresh sessionId and initialMessages
         setIsHydrating(false)
       } catch (err) {
         console.error("[ChatPage] Failed to load session history:", err)

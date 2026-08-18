@@ -92,18 +92,22 @@ export async function getSession(sessionId: string, idToken: string): Promise<Se
   const baseUrl = await loadApiBaseUrl()
   const url = `${baseUrl}sessions/${encodeURIComponent(sessionId)}`
   console.log(`[SessionService] Fetching session: ${sessionId}`)
-  
+
   const response = await fetch(url, {
     method: "GET",
     headers: authHeaders(idToken),
   })
   const result = await parseJsonOrThrow<SessionDetail>(response)
-  
-  console.log(`[SessionService] Got ${result.messages?.length || 0} messages for session ${sessionId}`)
+
+  console.log(
+    `[SessionService] Got ${result.messages?.length || 0} messages for session ${sessionId}`
+  )
   if (result.messages && result.messages.length > 0) {
-    console.log(`[SessionService] First message: "${result.messages[0].content?.substring(0, 50)}..."`)
+    console.log(
+      `[SessionService] First message: "${result.messages[0].content?.substring(0, 50)}..."`
+    )
   }
-  
+
   return result
 }
 

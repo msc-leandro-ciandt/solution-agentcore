@@ -298,6 +298,7 @@ preTokenLambda.addEnvironment('CLIENT_RUNTIME_MAP', JSON.stringify({
 ```python
 import os, json
 
+
 def lambda_handler(event, context):
     if event["triggerSource"] != "TokenGeneration_ClientCredentials":
         return event

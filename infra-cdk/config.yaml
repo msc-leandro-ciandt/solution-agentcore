@@ -20,7 +20,7 @@ backend:
   # This incurs additional costs: $0.75/1,000 records stored + $0.50/1,000 retrieval calls.
   # Set to true when you want to try persistent cross-session memory, which is keyed off of the
   # Cognito userId.
-  use_long_term_memory: false
+  use_long_term_memory: true
   ltm_top_k: 10             # Number of facts to retrieve per turn (default: 10)
   ltm_relevance_score: 0.3  # Minimum similarity threshold for retrieval (default: 0.3)
 

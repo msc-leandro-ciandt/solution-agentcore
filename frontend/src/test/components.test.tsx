@@ -9,12 +9,12 @@ describe("Component Integration Tests", () => {
   describe("App Component Structure", () => {
     it("should import BrowserRouter from react-router-dom", () => {
       const appContent = readFileSync(resolve(__dirname, "../App.tsx"), "utf-8")
-      expect(appContent).toContain("import { BrowserRouter } from 'react-router-dom'")
+      expect(appContent).toContain('import { BrowserRouter } from "react-router-dom"')
     })
 
     it("should import AuthProvider", () => {
       const appContent = readFileSync(resolve(__dirname, "../App.tsx"), "utf-8")
-      expect(appContent).toContain("import { AuthProvider } from '@/components/auth/AuthProvider'")
+      expect(appContent).toContain('import { AuthProvider } from "@/components/auth/AuthProvider"')
     })
 
     it("should wrap routes with BrowserRouter", () => {
@@ -84,7 +84,8 @@ describe("Component Integration Tests", () => {
     it("should use useAuth hook", () => {
       const chatPageContent = readFileSync(resolve(__dirname, "../routes/ChatPage.tsx"), "utf-8")
       expect(chatPageContent).toContain('import { useAuth } from "@/hooks/useAuth"')
-      expect(chatPageContent).toContain("const { isAuthenticated, signIn } = useAuth()")
+      expect(chatPageContent).toContain("isAuthenticated")
+      expect(chatPageContent).toContain("useAuth()")
     })
 
     it("should render sign-in UI for unauthenticated users", () => {
@@ -99,7 +100,7 @@ describe("Component Integration Tests", () => {
       expect(chatPageContent).toContain(
         'import ChatInterface from "@/components/chat/ChatInterface"'
       )
-      expect(chatPageContent).toContain("<ChatInterface />")
+      expect(chatPageContent).toContain("<ChatInterface")
     })
 
     it("should wrap authenticated view with GlobalContextProvider", () => {
@@ -115,7 +116,7 @@ describe("Component Integration Tests", () => {
   describe("Route Configuration", () => {
     it("should define routes using react-router-dom", () => {
       const routesContent = readFileSync(resolve(__dirname, "../routes/index.tsx"), "utf-8")
-      expect(routesContent).toContain("import { Routes, Route } from 'react-router-dom'")
+      expect(routesContent).toContain('import { Routes, Route } from "react-router-dom"')
     })
 
     it("should have root route pointing to ChatPage", () => {
@@ -125,7 +126,7 @@ describe("Component Integration Tests", () => {
 
     it("should import ChatPage component", () => {
       const routesContent = readFileSync(resolve(__dirname, "../routes/index.tsx"), "utf-8")
-      expect(routesContent).toContain("import ChatPage from './ChatPage'")
+      expect(routesContent).toContain('import ChatPage from "./ChatPage"')
     })
   })
 })

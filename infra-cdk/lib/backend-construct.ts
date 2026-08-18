@@ -38,6 +38,10 @@ export class BackendConstruct extends Construct {
   public feedbackApiUrl: string
   public runtimeArn: string
   public memoryArn: string
+  // AgentCore Memory resource ID (set in createAgentCoreRuntime). Read by the
+  // sessions Lambda (createSessionsApi) to fetch conversation history via
+  // ListEvents when a user resumes a past session.
+  private memoryId: string
   private readonly region: string
   private readonly account: string
   private userPool: cognito.IUserPool
@@ -117,9 +121,16 @@ export class BackendConstruct extends Construct {
     // Create Feedback DynamoDB table (example of application data storage)
     const feedbackTable = this.createFeedbackTable(props.config)
 
+    // Create the chat session history metadata table (Pattern 2 from
+    // docs/SESSION_MANAGEMENT.md: AgentCore Memory stays the source of truth
+    // for conversation content; this table stores per-session name/timestamps
+    // for a fast, recency-sorted sidebar listing).
+    const sessionsTable = this.createSessionsTable(props.config)
+
     // Create API Gateway Feedback API resources (example of best-practice API Gateway + Lambda
-    // pattern)
-    this.createFeedbackApi(props.config, props.frontendUrl, feedbackTable)
+    // pattern). Also wires up the /sessions routes on the same REST API —
+    // see createFeedbackApi() for rationale on reusing one API Gateway.
+    this.createFeedbackApi(props.config, props.frontendUrl, feedbackTable, sessionsTable)
   }
 
   private createAgentCoreRuntime(config: AppConfig): void {
@@ -308,8 +319,9 @@ export class BackendConstruct extends Construct {
     const memoryId = memory.memoryId
     const memoryArn = memory.memoryArn
 
-    // Store the memory ARN for access from main stack
+    // Store the memory ARN/ID for access from the main stack and the sessions Lambda
     this.memoryArn = memoryArn
+    this.memoryId = memoryId
 
     // Add memory-specific permissions to agent role
     agentRole.addToPolicy(
@@ -533,6 +545,38 @@ export class BackendConstruct extends Construct {
   }
 
   // Creates a DynamoDB table for storing user feedback.
+  /**
+   * Creates the DynamoDB table that stores chat session metadata (name,
+   * timestamps) for the "resume a past conversation" sidebar feature.
+   *
+   * This is the "metadata only" flavor of Pattern 2 in
+   * docs/SESSION_MANAGEMENT.md: AgentCore Memory (see createAgentCoreRuntime's
+   * "AgentMemory" resource) remains the single source of truth for actual
+   * conversation content — this table exists purely so the sessions Lambda
+   * can list a user's sessions sorted by recency in one fast Query, instead
+   * of paying for one ListEvents call per session just to build a sidebar.
+   *
+   * Partition key is the Cognito user sub (userId) so each user only ever
+   * queries their own sessions — no GSI needed.
+   *
+   * @param config - The application configuration from config.yaml.
+   * @returns The created DynamoDB table.
+   */
+  private createSessionsTable(config: AppConfig): dynamodb.Table {
+    return new dynamodb.Table(this, "SessionsTable", {
+      tableName: `${config.stack_name_base}-sessions`,
+      partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sessionId", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    })
+  }
+
+  // Creates a DynamoDB table for storing user feedback.
   private createFeedbackTable(config: AppConfig): dynamodb.Table {
     const feedbackTable = new dynamodb.Table(this, "FeedbackTable", {
       tableName: `${config.stack_name_base}-feedback`,
@@ -591,7 +635,8 @@ export class BackendConstruct extends Construct {
   private createFeedbackApi(
     config: AppConfig,
     frontendUrl: string,
-    feedbackTable: dynamodb.Table
+    feedbackTable: dynamodb.Table,
+    sessionsTable: dynamodb.Table
   ): void {
     // Create Lambda function for feedback using Python
     // ARM_64 required — matches Powertools ARM64 layer and avoids cross-platform
@@ -636,7 +681,7 @@ export class BackendConstruct extends Construct {
       description: "API for user feedback and future endpoints",
       defaultCorsPreflightOptions: {
         allowOrigins: [frontendUrl, "http://localhost:3000"],
-        allowMethods: ["POST", "OPTIONS"],
+        allowMethods: ["GET", "PUT", "DELETE", "POST", "OPTIONS"],
         allowHeaders: ["Content-Type", "Authorization"],
       },
       deployOptions: {
@@ -686,6 +731,10 @@ export class BackendConstruct extends Construct {
       requestValidator: requestValidator,
     })
 
+    // Wire up GET/sessions, GET|PUT|DELETE /sessions/{sessionId} on this same
+    // REST API — see createSessionsApi() for the Lambda and IAM details.
+    this.createSessionsApi(config, frontendUrl, sessionsTable, api, authorizer, requestValidator)
+
     // Store the API URL for access from main stack
     this.feedbackApiUrl = api.url
 
@@ -694,6 +743,136 @@ export class BackendConstruct extends Construct {
       parameterName: `/${config.stack_name_base}/feedback-api-url`,
       stringValue: api.url,
       description: "Feedback API Gateway URL",
+    })
+  }
+
+  /**
+   * Wires up the chat session history REST endpoints on the shared REST API
+   * (the same one used for /feedback — see createFeedbackApi's docstring for
+   * why a single API Gateway is reused instead of creating a second one).
+   *
+   * API Contract (all routes require Authorization: Bearer <cognito-id-token>):
+   *
+   * GET /sessions
+   *   Lists the authenticated user's chat sessions, sorted by updatedAt desc.
+   *   Response: [{ sessionId, name, createdAt, updatedAt }, ...]
+   *
+   * GET /sessions/{sessionId}
+   *   Returns session metadata plus its full conversation history, read live
+   *   from AgentCore Memory (ListEvents) — DynamoDB only stores the metadata.
+   *   Response: { sessionId, name, createdAt, updatedAt, messages: [...] }
+   *
+   * PUT /sessions/{sessionId}
+   *   Upserts session metadata. Called by the frontend as a "touch" after
+   *   each assistant response. On first touch (no existing name), generates
+   *   a short title via Bedrock (Claude Haiku) from the request body's
+   *   firstUserMessage/firstAssistantMessage fields; falls back to a
+   *   truncated firstUserMessage if the model call fails. Subsequent touches
+   *   only refresh updatedAt.
+   *   Request body: { firstUserMessage: string, firstAssistantMessage?: string }
+   *   Response: { sessionId, name, createdAt, updatedAt }
+   *
+   * DELETE /sessions/{sessionId}
+   *   Deletes the session's metadata row (authoritative for the sidebar
+   *   listing) and makes a best-effort attempt to delete the corresponding
+   *   events in AgentCore Memory. A partial Memory-deletion failure does not
+   *   fail the request — the session is already gone from the user's list.
+   *   Response: { success: true }
+   *
+   * Implementation: infra-cdk/lambdas/sessions/index.py
+   */
+  private createSessionsApi(
+    config: AppConfig,
+    frontendUrl: string,
+    sessionsTable: dynamodb.Table,
+    api: apigateway.RestApi,
+    authorizer: apigateway.CognitoUserPoolsAuthorizer,
+    requestValidator: apigateway.RequestValidator
+  ): void {
+    const sessionsLambda = new PythonFunction(this, "SessionsLambda", {
+      functionName: `${config.stack_name_base}-sessions`,
+      runtime: lambda.Runtime.PYTHON_3_13,
+      architecture: lambda.Architecture.ARM_64,
+      entry: path.join(__dirname, "..", "lambdas", "sessions"), // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+      handler: "handler",
+      environment: {
+        TABLE_NAME: sessionsTable.tableName,
+        MEMORY_ID: this.memoryId,
+        // Claude Haiku is used (not the agent's Sonnet model) since title
+        // generation only needs a short, cheap, fast completion — see
+        // infra-cdk/BEDROCK_MODELS.md for the cost/latency comparison.
+        // NOTE: claude-3-haiku-20240307 is AWS-marked "Legacy" and blocked
+        // for accounts without recent usage — claude-haiku-4-5 is the
+        // current active Haiku-tier model as of this writing.
+        TITLE_MODEL_ID: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        CORS_ALLOWED_ORIGINS: `${frontendUrl},http://localhost:3000`,
+      },
+      timeout: cdk.Duration.seconds(30),
+      layers: [
+        lambda.LayerVersion.fromLayerVersionArn(
+          this,
+          "SessionsPowertoolsLayer",
+          `arn:aws:lambda:${
+            cdk.Stack.of(this).region
+          }:017000801446:layer:AWSLambdaPowertoolsPythonV3-python313-arm64:18`
+        ),
+      ],
+      logGroup: new logs.LogGroup(this, "SessionsLambdaLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-sessions`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // DynamoDB: full CRUD on the sessions metadata table.
+    sessionsTable.grantReadWriteData(sessionsLambda)
+
+    // AgentCore Memory data plane: read conversation history for a resumed
+    // session, and best-effort delete events when a session is deleted.
+    sessionsLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "SessionsMemoryAccess",
+        effect: iam.Effect.ALLOW,
+        actions: ["bedrock-agentcore:ListEvents", "bedrock-agentcore:DeleteEvent"],
+        resources: [this.memoryArn],
+      })
+    )
+
+    // Bedrock: invoke Claude Haiku to generate a short session title.
+    // Scoped to the specific inference profile + underlying foundation model,
+    // not a wildcard across all Bedrock models.
+    sessionsLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "SessionTitleGeneration",
+        effect: iam.Effect.ALLOW,
+        actions: ["bedrock:InvokeModel"],
+        resources: [
+          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0`,
+          "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+        ],
+      })
+    )
+
+    const sessionsResource = api.root.addResource("sessions")
+    const sessionByIdResource = sessionsResource.addResource("{sessionId}")
+    const sessionsLambdaIntegration = new apigateway.LambdaIntegration(sessionsLambda)
+
+    sessionsResource.addMethod("GET", sessionsLambdaIntegration, {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    })
+    sessionByIdResource.addMethod("GET", sessionsLambdaIntegration, {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    })
+    sessionByIdResource.addMethod("PUT", sessionsLambdaIntegration, {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+      requestValidator: requestValidator,
+    })
+    sessionByIdResource.addMethod("DELETE", sessionsLambdaIntegration, {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
     })
   }
 

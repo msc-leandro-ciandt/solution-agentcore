@@ -53,7 +53,7 @@ agent = Agent(
     model=model,
     tools=tools,
     conversation_manager=SlidingWindowConversationManager(
-        window_size=40,                # Max messages to keep (default: 40)
+        window_size=40,  # Max messages to keep (default: 40)
         should_truncate_results=True,  # Truncate large tool results (default: True)
     ),
 )
@@ -64,13 +64,13 @@ agent = Agent(
 The sliding window manager also supports proactive compression, which triggers context reduction before the context window overflows rather than waiting for an error:
 
 ```python
-conversation_manager=SlidingWindowConversationManager(
+conversation_manager = SlidingWindowConversationManager(
     window_size=40,
     proactive_compression=True,  # Compress at 70% context usage (default threshold)
 )
 
 # Or with a custom threshold:
-conversation_manager=SlidingWindowConversationManager(
+conversation_manager = SlidingWindowConversationManager(
     window_size=40,
     proactive_compression={"compression_threshold": 0.5},  # Compress at 50%
 )
@@ -81,9 +81,9 @@ conversation_manager=SlidingWindowConversationManager(
 For agents that perform many tool operations in loops (e.g., web browsing with frequent screenshots), enable per-turn management to proactively trim before every model call:
 
 ```python
-conversation_manager=SlidingWindowConversationManager(
+conversation_manager = SlidingWindowConversationManager(
     window_size=40,
-    per_turn=True,   # Apply before every model call
+    per_turn=True,  # Apply before every model call
     # per_turn=5,    # Or apply every 5 model calls
 )
 ```
@@ -138,9 +138,9 @@ agent = Agent(
     model=model,
     tools=tools,
     conversation_manager=SummarizingConversationManager(
-        summary_ratio=0.3,               # Summarize oldest 30% of messages (default)
-        preserve_recent_messages=10,      # Always keep last 10 messages (default)
-        proactive_compression=True,       # Compress at 70% context usage
+        summary_ratio=0.3,  # Summarize oldest 30% of messages (default)
+        preserve_recent_messages=10,  # Always keep last 10 messages (default)
+        proactive_compression=True,  # Compress at 70% context usage
     ),
 )
 ```
@@ -252,8 +252,8 @@ agent = create_agent(
     middleware=[
         SummarizationMiddleware(
             model="us.anthropic.claude-sonnet-4-20250514-v1:0",
-            trigger=("tokens", 4000),   # Trigger when token count exceeds 4000
-            keep=("messages", 20),      # Keep last 20 messages verbatim
+            trigger=("tokens", 4000),  # Trigger when token count exceeds 4000
+            keep=("messages", 20),  # Keep last 20 messages verbatim
         )
     ],
     checkpointer=InMemorySaver(),
@@ -403,10 +403,12 @@ class ContextCheckHook(HookProvider):
 
         # Convert to text-only format for the summarization call
         converse_messages = self._to_text_only(to_summarize)
-        converse_messages.append({
-            "role": "user",
-            "content": [{"text": "Please summarize this conversation."}],
-        })
+        converse_messages.append(
+            {
+                "role": "user",
+                "content": [{"text": "Please summarize this conversation."}],
+            }
+        )
 
         # Direct Bedrock Converse call — no agent loop, no tools
         if not self._bedrock:
@@ -429,8 +431,18 @@ class ContextCheckHook(HookProvider):
 
         # Replace agent messages in-place
         agent.messages[:] = [
-            {"role": "user", "content": [{"text": f"## Previous Conversation Summary\n\n{summary_text}"}]},
-            {"role": "assistant", "content": [{"text": "Understood. I'll continue from where we left off."}]},
+            {
+                "role": "user",
+                "content": [
+                    {"text": f"## Previous Conversation Summary\n\n{summary_text}"}
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {"text": "Understood. I'll continue from where we left off."}
+                ],
+            },
         ] + to_keep
 
     def _is_tool_result(self, msg: dict) -> bool:
@@ -466,7 +478,11 @@ class ContextCheckHook(HookProvider):
                     elif "toolResult" in block:
                         tr_content = block["toolResult"].get("content", [])
                         snippet = next(
-                            (c["text"][:200] for c in tr_content if isinstance(c, dict) and "text" in c),
+                            (
+                                c["text"][:200]
+                                for c in tr_content
+                                if isinstance(c, dict) and "text" in c
+                            ),
                             "result received",
                         )
                         text_blocks.append({"text": f"[Tool result: {snippet}]"})
@@ -481,7 +497,9 @@ class ContextCheckHook(HookProvider):
             else:
                 cleaned.append(msg)
         if cleaned and cleaned[0]["role"] == "assistant":
-            cleaned.insert(0, {"role": "user", "content": [{"text": "(start of conversation)"}]})
+            cleaned.insert(
+                0, {"role": "user", "content": [{"text": "(start of conversation)"}]}
+            )
 
         return cleaned
 ```
@@ -512,6 +530,7 @@ def _summarize_and_replace(self, agent) -> None:
     # After replacing messages, re-inject external state
     self._inject_external_state(agent)
 
+
 def _inject_external_state(self, agent) -> None:
     """Re-inject structured external state after context compression."""
     state_path = os.environ.get("AGENT_STATE_FILE", "")
@@ -523,14 +542,20 @@ def _inject_external_state(self, agent) -> None:
     except FileNotFoundError:
         return
 
-    agent.messages.append({
-        "role": "user",
-        "content": [{"text": (
-            "Context was compressed. Here is the current state log — "
-            "use it to recall what has been done and the current status:\n\n"
-            + state_content
-        )}],
-    })
+    agent.messages.append(
+        {
+            "role": "user",
+            "content": [
+                {
+                    "text": (
+                        "Context was compressed. Here is the current state log — "
+                        "use it to recall what has been done and the current status:\n\n"
+                        + state_content
+                    )
+                }
+            ],
+        }
+    )
 ```
 
 This pattern is particularly powerful for agents that:

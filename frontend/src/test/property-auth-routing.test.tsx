@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest"
 import * as fc from "fast-check"
-import { render, screen, cleanup } from "@testing-library/react"
+import { render, screen, cleanup, waitFor } from "@testing-library/react"
 import ChatPage from "@/routes/ChatPage"
 
 // Mock the useAuth hook
@@ -26,6 +26,16 @@ vi.mock("@/components/chat/ChatInterface", () => ({
 // Mock the GlobalContextProvider
 vi.mock("@/app/context/GlobalContext", () => ({
   GlobalContextProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}))
+
+// Mock the sessions service so ChatPage's session-history hydration and
+// sidebar listing (added for the chat history feature) resolve instantly and
+// deterministically in tests, instead of hitting a real (or unmocked) API.
+vi.mock("@/services/sessionsService", () => ({
+  listSessions: vi.fn().mockResolvedValue([]),
+  getSession: vi.fn().mockRejectedValue(new Error("no session in test")),
+  touchSession: vi.fn().mockResolvedValue({}),
+  deleteSession: vi.fn().mockResolvedValue(undefined),
 }))
 
 import { useAuth } from "@/hooks/useAuth"
@@ -77,11 +87,11 @@ describe("Authentication State Routing", () => {
     )
   })
 
-  it("should render chat interface when user is authenticated", () => {
-    fc.assert(
-      fc.property(
+  it("should render chat interface when user is authenticated", async () => {
+    await fc.assert(
+      fc.asyncProperty(
         fc.constant(true), // isAuthenticated = true
-        isAuthenticated => {
+        async isAuthenticated => {
           // Clean up before each property test iteration
           cleanup()
 
@@ -102,26 +112,27 @@ describe("Authentication State Routing", () => {
 
           render(<ChatPage />)
 
-          // Should show chat interface
-          const chatInterface = screen.queryByTestId("chat-interface")
-          expect(chatInterface).toBeTruthy()
+          // ChatPage briefly hydrates session history (async) before showing
+          // ChatInterface, so this must wait rather than assert synchronously.
+          return waitFor(() => {
+            const chatInterface = screen.queryByTestId("chat-interface")
+            expect(chatInterface).toBeTruthy()
 
-          // Should NOT show "Please sign in" text
-          const signInText = screen.queryByText(/Please sign in/i)
-          expect(signInText).toBeNull()
-
-          return true
+            // Should NOT show "Please sign in" text
+            const signInText = screen.queryByText(/Please sign in/i)
+            expect(signInText).toBeNull()
+          }).then(() => true)
         }
       ),
       { numRuns: 100 }
     )
   })
 
-  it("should toggle between sign-in and chat interface based on auth state", () => {
-    fc.assert(
-      fc.property(
+  it("should toggle between sign-in and chat interface based on auth state", async () => {
+    await fc.assert(
+      fc.asyncProperty(
         fc.boolean(), // Random authentication state
-        isAuthenticated => {
+        async isAuthenticated => {
           // Clean up before each property test iteration
           cleanup()
 
@@ -145,9 +156,12 @@ describe("Authentication State Routing", () => {
           render(<ChatPage />)
 
           if (isAuthenticated) {
-            // Should show chat interface
-            const chatInterface = screen.queryByTestId("chat-interface")
-            expect(chatInterface).toBeTruthy()
+            // ChatPage briefly hydrates session history (async) before
+            // showing ChatInterface, so this must wait rather than assert synchronously.
+            await waitFor(() => {
+              const chatInterface = screen.queryByTestId("chat-interface")
+              expect(chatInterface).toBeTruthy()
+            })
           } else {
             // Should show sign-in UI
             const signInText = screen.queryByText(/Please sign in/i)
@@ -161,9 +175,9 @@ describe("Authentication State Routing", () => {
     )
   })
 
-  it("should wrap authenticated view with GlobalContextProvider", () => {
-    fc.assert(
-      fc.property(fc.constant(true), isAuthenticated => {
+  it("should wrap authenticated view with GlobalContextProvider", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.constant(true), async isAuthenticated => {
         // Clean up before each property test iteration
         cleanup()
 
@@ -184,9 +198,12 @@ describe("Authentication State Routing", () => {
 
         render(<ChatPage />)
 
-        // Chat interface should be present (wrapped by GlobalContextProvider)
-        const chatInterface = screen.queryByTestId("chat-interface")
-        expect(chatInterface).toBeTruthy()
+        // Chat interface should be present (wrapped by GlobalContextProvider).
+        // ChatPage briefly hydrates session history (async) first.
+        await waitFor(() => {
+          const chatInterface = screen.queryByTestId("chat-interface")
+          expect(chatInterface).toBeTruthy()
+        })
 
         return true
       }),

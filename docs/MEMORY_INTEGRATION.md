@@ -155,7 +155,9 @@ pip install bedrock-agentcore[strands-agents]
 ```python
 import os
 from strands import Agent
-from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+from bedrock_agentcore.memory.integrations.strands.session_manager import (
+    AgentCoreMemorySessionManager,
+)
 from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
 
 memory_id = os.environ.get("MEMORY_ID")
@@ -164,20 +166,18 @@ if not memory_id:
 
 # Basic configuration
 config = AgentCoreMemoryConfig(
-    memory_id=memory_id,
-    session_id=session_id,
-    actor_id=user_id
+    memory_id=memory_id, session_id=session_id, actor_id=user_id
 )
 
 session_manager = AgentCoreMemorySessionManager(
     agentcore_memory_config=config,
-    region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
 )
 
 agent = Agent(
     system_prompt="You are a helpful assistant.",
     model=bedrock_model,
-    session_manager=session_manager
+    session_manager=session_manager,
 )
 ```
 
@@ -192,8 +192,8 @@ config = AgentCoreMemoryConfig(
     actor_id=user_id,
     retrieval_config={
         "/preferences/{actorId}": RetrievalConfig(top_k=5, relevance_score=0.7),
-        "/facts/{actorId}": RetrievalConfig(top_k=10, relevance_score=0.3)
-    }
+        "/facts/{actorId}": RetrievalConfig(top_k=10, relevance_score=0.3),
+    },
 )
 ```
 
@@ -233,16 +233,21 @@ For more control over memory lifecycle and custom memory operations, you can use
 
 ```python
 from strands import Agent
-from strands.hooks import AgentInitializedEvent, HookProvider, HookRegistry, MessageAddedEvent
+from strands.hooks import (
+    AgentInitializedEvent,
+    HookProvider,
+    HookRegistry,
+    MessageAddedEvent,
+)
 from bedrock_agentcore.memory.session import MemorySession, MemorySessionManager
 from bedrock_agentcore.memory.constants import ConversationalMessage, MessageRole
 
 # Initialize session manager and create session
 session_manager = MemorySessionManager(memory_id=memory_id, region_name="us-east-1")
 user_session = session_manager.create_memory_session(
-    actor_id=user_id,
-    session_id=session_id
+    actor_id=user_id, session_id=session_id
 )
+
 
 # Create custom hook provider
 class MemoryHookProvider(HookProvider):
@@ -257,8 +262,8 @@ class MemoryHookProvider(HookProvider):
             context_messages = []
             for turn in recent_turns:
                 for message in turn:
-                    role = message['role']
-                    content = message['content']['text']
+                    role = message["role"]
+                    content = message["content"]["text"]
                     context_messages.append(f"{role}: {content}")
 
             context = "\n".join(context_messages)
@@ -269,7 +274,11 @@ class MemoryHookProvider(HookProvider):
         messages = event.agent.messages
         if messages and len(messages) > 0:
             message_text = messages[-1]["content"][0]["text"]
-            message_role = MessageRole.USER if messages[-1]["role"] == "user" else MessageRole.ASSISTANT
+            message_role = (
+                MessageRole.USER
+                if messages[-1]["role"] == "user"
+                else MessageRole.ASSISTANT
+            )
 
             self.memory_session.add_turns(
                 messages=[ConversationalMessage(message_text, message_role)]
@@ -279,12 +288,13 @@ class MemoryHookProvider(HookProvider):
         registry.add_callback(MessageAddedEvent, self.on_message_added)
         registry.add_callback(AgentInitializedEvent, self.on_agent_initialized)
 
+
 # Create agent with memory hooks
 agent = Agent(
     system_prompt="You are a helpful assistant.",
     model=bedrock_model,
     hooks=[MemoryHookProvider(user_session)],
-    tools=[...]
+    tools=[...],
 )
 ```
 
@@ -311,52 +321,38 @@ from langgraph_checkpoint_aws import AgentCoreMemorySaver
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 # Configure memory checkpointer
-checkpointer = AgentCoreMemorySaver(
-    memory_id=memory_id,
-    region_name="us-east-1"
-)
+checkpointer = AgentCoreMemorySaver(memory_id=memory_id, region_name="us-east-1")
 
 # Create Bedrock model
 bedrock_model = ChatBedrock(
     model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
     temperature=0.1,
-    streaming=True
+    streaming=True,
 )
 
 # Create MCP client for Gateway tools
-mcp_client = MultiServerMCPClient({
-    "gateway": {
-        "transport": "streamable_http",
-        "url": gateway_url,
-        "headers": {
-            "Authorization": f"Bearer {access_token}"
+mcp_client = MultiServerMCPClient(
+    {
+        "gateway": {
+            "transport": "streamable_http",
+            "url": gateway_url,
+            "headers": {"Authorization": f"Bearer {access_token}"},
         }
     }
-})
+)
 
 # Load tools from Gateway
 tools = await mcp_client.get_tools()
 
 # Create agent with memory and tools
-graph = create_react_agent(
-    model=bedrock_model,
-    tools=tools,
-    checkpointer=checkpointer
-)
+graph = create_react_agent(model=bedrock_model, tools=tools, checkpointer=checkpointer)
 
 # Invoke with actor and session
-config = {
-    "configurable": {
-        "thread_id": session_id,
-        "actor_id": user_id
-    }
-}
+config = {"configurable": {"thread_id": session_id, "actor_id": user_id}}
 
 # Stream responses
 async for event in graph.astream(
-    {"messages": [("user", "Hello")]},
-    config=config,
-    stream_mode="messages"
+    {"messages": [("user", "Hello")]}, config=config, stream_mode="messages"
 ):
     message_chunk, metadata = event
     # Process streaming chunks
@@ -373,6 +369,7 @@ import uuid
 
 store = AgentCoreMemoryStore(MEMORY_ID, region_name="us-west-2")
 
+
 def pre_model_hook(state, config: RunnableConfig, *, store):
     """Save messages for extraction"""
     actor_id = config["configurable"]["actor_id"]
@@ -387,12 +384,13 @@ def pre_model_hook(state, config: RunnableConfig, *, store):
 
     return {"llm_input_messages": messages}
 
+
 graph = create_react_agent(
     model=llm,
     tools=tools,
     checkpointer=checkpointer,
     store=store,
-    pre_model_hook=pre_model_hook
+    pre_model_hook=pre_model_hook,
 )
 ```
 

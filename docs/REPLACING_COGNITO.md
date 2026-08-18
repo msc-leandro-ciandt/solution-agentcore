@@ -118,8 +118,8 @@ mcp_client = MCPClient(
     gateway_url=GATEWAY_URL,
     headers={
         "Authorization": f"Bearer {m2m_token}",  # machine trust
-        "X-User-Id": user_id,                     # user identity (plain string)
-    }
+        "X-User-Id": user_id,  # user identity (plain string)
+    },
 )
 ```
 
@@ -128,12 +128,12 @@ mcp_client = MCPClient(
 ```python
 def lambda_handler(event, context):
     """Request interceptor: reads user identity from plain string header."""
-    gateway_request = event['mcp']['gatewayRequest']
-    headers = gateway_request.get('headers', {})
-    
+    gateway_request = event["mcp"]["gatewayRequest"]
+    headers = gateway_request.get("headers", {})
+
     # Simple string extraction — no JWT decoding needed
-    user_id = headers.get('X-User-Id', '')
-    
+    user_id = headers.get("X-User-Id", "")
+
     # Look up permissions for this user (from DB, YAML, IdP API, etc.)
     permissions = get_user_permissions(user_id)
     # ... allow or deny based on permissions
@@ -176,15 +176,17 @@ User JWT → Runtime (validates user JWT via any IdP's OIDC)
 
 ```python
 # In the agent code (runs in AgentCore Runtime)
-user_jwt = get_user_jwt_from_request(context)  # the original user JWT (already validated by Runtime's authorizer)
+user_jwt = get_user_jwt_from_request(
+    context
+)  # the original user JWT (already validated by Runtime's authorizer)
 m2m_token = await get_m2m_token()  # plain M2M, no user claims
 
 mcp_client = MCPClient(
     gateway_url=GATEWAY_URL,
     headers={
-        "Authorization": f"Bearer {m2m_token}",    # machine trust
-        "X-User-Token": user_jwt,                   # full user JWT (verifiable)
-    }
+        "Authorization": f"Bearer {m2m_token}",  # machine trust
+        "X-User-Token": user_jwt,  # full user JWT (verifiable)
+    },
 )
 ```
 
@@ -195,6 +197,7 @@ import jwt
 import requests
 from functools import lru_cache
 
+
 # Cache the JWKS (public keys) from the IdP
 @lru_cache(maxsize=1)
 def get_jwks(jwks_url):
@@ -202,53 +205,54 @@ def get_jwks(jwks_url):
     response = requests.get(jwks_url)
     return response.json()
 
+
 def lambda_handler(event, context):
     """Request interceptor: verifies user JWT and extracts claims."""
-    gateway_request = event['mcp']['gatewayRequest']
-    headers = gateway_request.get('headers', {})
-    
+    gateway_request = event["mcp"]["gatewayRequest"]
+    headers = gateway_request.get("headers", {})
+
     # Extract the full user JWT
-    user_token = headers.get('X-User-Token', '')
-    
+    user_token = headers.get("X-User-Token", "")
+
     if not user_token:
         return deny_request("No user token provided")
-    
+
     # Verify JWT signature and extract claims
     try:
         # Get public keys from the IdP's JWKS endpoint
         jwks = get_jwks(IDP_JWKS_URL)  # e.g., https://the-idp/.well-known/jwks.json
-        
+
         # Decode and verify the JWT
         claims = jwt.decode(
             user_token,
             jwks,
             algorithms=["RS256"],
             audience=EXPECTED_AUDIENCE,
-            issuer=EXPECTED_ISSUER
+            issuer=EXPECTED_ISSUER,
         )
     except jwt.ExpiredSignatureError:
         return deny_request("User token expired")
     except jwt.InvalidTokenError as e:
         return deny_request(f"Invalid user token: {e}")
-    
+
     # Extract user attributes directly from verified claims
-    user_id = claims.get('sub', '')
-    department = claims.get('department', '')
-    groups = claims.get('groups', [])  # or 'cognito:groups' for Cognito
-    role = claims.get('role', 'viewer')
-    
+    user_id = claims.get("sub", "")
+    department = claims.get("department", "")
+    groups = claims.get("groups", [])  # or 'cognito:groups' for Cognito
+    role = claims.get("role", "viewer")
+
     # Make access control decision based on verified claims
-    tool_name = gateway_request['body'].get('params', {}).get('name', '')
-    
+    tool_name = gateway_request["body"].get("params", {}).get("name", "")
+
     if not is_authorized(user_id, department, groups, role, tool_name):
-        return deny_request(f"User {user_id} ({department}) not authorized for {tool_name}")
-    
+        return deny_request(
+            f"User {user_id} ({department}) not authorized for {tool_name}"
+        )
+
     # Authorized — pass through
     return {
         "interceptorOutputVersion": "1.0",
-        "mcp": {
-            "transformedGatewayRequest": gateway_request
-        }
+        "mcp": {"transformedGatewayRequest": gateway_request},
     }
 ```
 
@@ -307,16 +311,16 @@ Agent calls tools/call → Gateway → Request Interceptor Lambda → (if allowe
 ```python
 def lambda_handler(event, context):
     """Request interceptor: controls tools/call access."""
-    gateway_request = event['mcp']['gatewayRequest']
-    
+    gateway_request = event["mcp"]["gatewayRequest"]
+
     # Extract user identity from custom header
-    headers = gateway_request.get('headers', {})
-    user_id = headers.get('X-User-Id', '')
-    
+    headers = gateway_request.get("headers", {})
+    user_id = headers.get("X-User-Id", "")
+
     # Identify which tool is being called
-    tool_name = gateway_request['body'].get('params', {}).get('name', '')
-    target = gateway_request.get('target', '')
-    
+    tool_name = gateway_request["body"].get("params", {}).get("name", "")
+    target = gateway_request.get("target", "")
+
     # Look up permissions (from DB, YAML, IdP groups, etc.)
     if not check_tool_authorization(user_id, tool_name, target):
         return {
@@ -327,19 +331,17 @@ def lambda_handler(event, context):
                     "body": {
                         "error": {
                             "code": "UNAUTHORIZED",
-                            "message": f"User {user_id} is not authorized to call {tool_name}"
+                            "message": f"User {user_id} is not authorized to call {tool_name}",
                         }
-                    }
+                    },
                 }
-            }
+            },
         }
-    
+
     # Authorized — pass through to target
     return {
         "interceptorOutputVersion": "1.0",
-        "mcp": {
-            "transformedGatewayRequest": gateway_request
-        }
+        "mcp": {"transformedGatewayRequest": gateway_request},
     }
 
 
@@ -375,22 +377,26 @@ Agent calls tools/list → Gateway → Target returns ALL tools → Response Int
 def lambda_handler(event, context):
     """Response interceptor: filters tools/list results."""
     # Extract gateway response and authorization header
-    gateway_response = event['mcp']['gatewayResponse']
-    auth_header = gateway_response['headers'].get('Authorization', '')
-    
+    gateway_response = event["mcp"]["gatewayResponse"]
+    auth_header = gateway_response["headers"].get("Authorization", "")
+
     # Extract user identity (from custom header passed through)
-    user_id = gateway_response['headers'].get('X-User-Id', '')
-    
+    user_id = gateway_response["headers"].get("X-User-Id", "")
+
     # Get tools from gateway response
-    tools = gateway_response['body']['result'].get('tools', [])
+    tools = gateway_response["body"]["result"].get("tools", [])
     # Also check structuredContent (for semantic search responses)
     if not tools:
-        tools = gateway_response['body']['result'].get('structuredContent', {}).get('tools', [])
-    
+        tools = (
+            gateway_response["body"]["result"]
+            .get("structuredContent", {})
+            .get("tools", [])
+        )
+
     # Look up user permissions and filter tools
     user_scopes = get_user_scopes(user_id)  # from DB, YAML, IdP, etc.
     filtered_tools = filter_tools_by_scope(tools, user_scopes)
-    
+
     # Return transformed response with filtered tools
     return {
         "interceptorOutputVersion": "1.0",
@@ -398,11 +404,9 @@ def lambda_handler(event, context):
             "transformedGatewayResponse": {
                 "statusCode": 200,
                 "headers": {"Authorization": auth_header},
-                "body": {
-                    "result": {"tools": filtered_tools}
-                }
+                "body": {"result": {"tools": filtered_tools}},
             }
-        }
+        },
     }
 
 
@@ -410,7 +414,7 @@ def filter_tools_by_scope(tools, allowed_scopes):
     """Filter tools based on user's allowed scopes."""
     filtered_tools = []
     for tool in tools:
-        target, action = tool['name'].split('___')
+        target, action = tool["name"].split("___")
         # Check if user has full target access or specific tool access
         if target in allowed_scopes or f"{target}:{action}" in allowed_scopes:
             filtered_tools.append(tool)
@@ -547,29 +551,28 @@ Cognito User Groups are a built-in feature for organizing users into logical gro
 ```python
 import boto3
 
-cognito = boto3.client('cognito-idp')
+cognito = boto3.client("cognito-idp")
+
 
 def lambda_handler(event, context):
     """Post-Confirmation trigger: assign new users to a default group."""
-    user_pool_id = event['userPoolId']
-    username = event['userName']
-    
+    user_pool_id = event["userPoolId"]
+    username = event["userName"]
+
     # Assign to default group based on email domain or other logic
-    email = event['request']['userAttributes'].get('email', '')
-    
-    if email.endswith('@finance.company.com'):
-        group = 'finance'
-    elif email.endswith('@eng.company.com'):
-        group = 'engineering'
+    email = event["request"]["userAttributes"].get("email", "")
+
+    if email.endswith("@finance.company.com"):
+        group = "finance"
+    elif email.endswith("@eng.company.com"):
+        group = "engineering"
     else:
-        group = 'general'
-    
+        group = "general"
+
     cognito.admin_add_user_to_group(
-        UserPoolId=user_pool_id,
-        Username=username,
-        GroupName=group
+        UserPoolId=user_pool_id, Username=username, GroupName=group
     )
-    
+
     return event
 ```
 
@@ -602,37 +605,38 @@ import os
 import logging
 
 logger = logging.getLogger()
-cognito = boto3.client('cognito-idp')
+cognito = boto3.client("cognito-idp")
 
-USER_POOL_ID = os.environ.get('USER_POOL_ID')
+USER_POOL_ID = os.environ.get("USER_POOL_ID")
+
 
 def lambda_handler(event, context):
     """V3 Pre-Token Lambda: injects real Cognito group info into M2M token."""
     trigger_source = event.get("triggerSource", "")
-    
+
     # Only process M2M (Client Credentials) flows
     if trigger_source != "TokenGeneration_ClientCredentials":
         return event
-    
+
     # Get the verified user_id passed from the Runtime
     client_metadata = event.get("request", {}).get("clientMetadata", {})
     verified_user_id = client_metadata.get("verified_user_id", "")
-    
+
     if not verified_user_id:
         logger.warning("No verified_user_id in clientMetadata")
         return event
-    
+
     # --- REPLACES UUID-BASED USER_ROLE_MAP ---
     # Fetch user's ACTUAL Cognito groups.
     # Note: verified_user_id is the Cognito sub (UUID). AdminListGroupsForUser
     # requires the Cognito username (which is the email in FAST). Resolve the
     # UUID to username via ListUsers first, then call AdminListGroupsForUser.
     user_groups = get_user_groups(verified_user_id)
-    
+
     # Determine department and role from groups
     department = resolve_department(user_groups)
     role = resolve_role(user_groups)
-    
+
     # Inject into M2M access token
     event["response"]["claimsAndScopeOverrideDetails"] = {
         "accessTokenGeneration": {
@@ -644,7 +648,7 @@ def lambda_handler(event, context):
             }
         }
     }
-    
+
     return event
 
 
@@ -670,7 +674,7 @@ def get_user_groups(user_id):
             UserPoolId=USER_POOL_ID,
             Username=username,
         )
-        return [group['GroupName'] for group in response.get('Groups', [])]
+        return [group["GroupName"] for group in response.get("Groups", [])]
     except Exception as e:
         logger.error("Failed to fetch groups for user %s: %s", user_id, str(e))
         return []
@@ -678,20 +682,20 @@ def get_user_groups(user_id):
 
 def resolve_department(groups):
     """Resolve department from group membership."""
-    if 'finance' in groups:
-        return 'finance'
-    elif 'engineering' in groups:
-        return 'engineering'
-    return 'guest'
+    if "finance" in groups:
+        return "finance"
+    elif "engineering" in groups:
+        return "engineering"
+    return "guest"
 
 
 def resolve_role(groups):
     """Resolve role from group membership."""
-    if 'admin' in groups:
-        return 'admin'
-    elif 'developer' in groups:
-        return 'developer'
-    return 'viewer'
+    if "admin" in groups:
+        return "admin"
+    elif "developer" in groups:
+        return "developer"
+    return "viewer"
 ```
 
 ### 5d. Cedar Policy Examples Using Groups
@@ -750,7 +754,9 @@ In the Pre-Token Lambda, resolve group membership to simple boolean claims:
 ```python
 claims["is_finance_team"] = "true" if "finance" in user_groups else "false"
 claims["is_admin"] = "true" if "admin" in user_groups else "false"
-claims["can_delete"] = "true" if "admin" in user_groups and "finance" in user_groups else "false"
+claims["can_delete"] = (
+    "true" if "admin" in user_groups and "finance" in user_groups else "false"
+)
 ```
 
 Then in Cedar:

@@ -57,21 +57,16 @@ Each Lambda target in FAST follows this pattern:
 def handler(event, context):
     # Get tool name from context (strip target prefix)
     delimiter = "___"
-    original_tool_name = context.client_context.custom['bedrockAgentCoreToolName']
-    tool_name = original_tool_name[original_tool_name.index(delimiter) + len(delimiter):]
-    
+    original_tool_name = context.client_context.custom["bedrockAgentCoreToolName"]
+    tool_name = original_tool_name[
+        original_tool_name.index(delimiter) + len(delimiter) :
+    ]
+
     # Event contains tool arguments directly
     arguments = event
-    
+
     # Return response in expected format
-    return {
-        'content': [
-            {
-                'type': 'text',
-                'text': 'Tool response here'
-            }
-        ]
-    }
+    return {"content": [{"type": "text", "text": "Tool response here"}]}
 ```
 
 #### Tool Invocation Protocol Details
@@ -82,10 +77,10 @@ The tool name is **NOT** passed in the event body. Gateway passes it via the Lam
 
 ```python
 # Tool name location
-original_tool_name = context.client_context.custom['bedrockAgentCoreToolName']
+original_tool_name = context.client_context.custom["bedrockAgentCoreToolName"]
 
 # Arguments are in event body
-name = event.get('name', 'World')
+name = event.get("name", "World")
 ```
 
 **Tool Name Format:**
@@ -106,28 +101,31 @@ import logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+
 def lambda_handler(event, context):
     try:
         # Get tool name from context
-        original_tool_name = context.client_context.custom['bedrockAgentCoreToolName']
+        original_tool_name = context.client_context.custom["bedrockAgentCoreToolName"]
         logger.info(f"Received tool invocation: {original_tool_name}")
         logger.info(f"Event: {json.dumps(event)}")
-        
+
         # Strip target prefix
         delimiter = "___"
         if delimiter in original_tool_name:
-            tool_name = original_tool_name[original_tool_name.index(delimiter) + len(delimiter):]
+            tool_name = original_tool_name[
+                original_tool_name.index(delimiter) + len(delimiter) :
+            ]
         else:
             tool_name = original_tool_name
-        
+
         # Route to appropriate tool handler
         if tool_name == "sample_tool":
-            name = event.get('name', 'World')
+            name = event.get("name", "World")
             result = f"Hello, {name}! This is a sample tool from FAST."
             return {"result": result}
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
-            
+
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
         raise
@@ -259,25 +257,21 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 
 # Create MCP client with Gateway configuration
-mcp_client = MultiServerMCPClient({
-    "gateway": {
-        "transport": "streamable_http",
-        "url": gateway_url,
-        "headers": {
-            "Authorization": f"Bearer {access_token}"
+mcp_client = MultiServerMCPClient(
+    {
+        "gateway": {
+            "transport": "streamable_http",
+            "url": gateway_url,
+            "headers": {"Authorization": f"Bearer {access_token}"},
         }
     }
-})
+)
 
 # Load tools from Gateway
 tools = await mcp_client.get_tools()
 
 # Create agent with tools
-graph = create_react_agent(
-    model=bedrock_model,
-    tools=tools,
-    checkpointer=checkpointer
-)
+graph = create_react_agent(model=bedrock_model, tools=tools, checkpointer=checkpointer)
 ```
 
 **Example:** See `patterns/langgraph-single-agent/langgraph_agent.py` for complete implementation.
@@ -292,8 +286,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from langchain_mcp_adapters.tools import load_mcp_tools
 
 async with streamablehttp_client(
-    gateway_url,
-    headers={"Authorization": f"Bearer {access_token}"}
+    gateway_url, headers={"Authorization": f"Bearer {access_token}"}
 ) as (read, write, _):
     async with ClientSession(read, write) as session:
         await session.initialize()

@@ -10,19 +10,44 @@ import { useGlobal } from "@/app/context/GlobalContext"
 import { AgentCoreClient } from "@/lib/agentcore-client"
 import type { AgentPattern } from "@/lib/agentcore-client"
 import { submitFeedback } from "@/services/feedbackService"
+import { touchSession } from "@/services/sessionsService"
 import { useAuth } from "react-oidc-context"
 import { useDefaultTool } from "@/hooks/useToolRenderer"
 import { ToolCallDisplay } from "./ToolCallDisplay"
 
-export default function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([])
+interface ChatInterfaceProps {
+  /** The active AgentCore session ID. Rendered with this as its `key` by the
+   * parent so a session switch fully remounts the component (see ChatPage.tsx). */
+  sessionId: string
+  /** Messages to hydrate with when resuming a past session. Empty for a new chat. */
+  initialMessages: Message[]
+  /** Requests that the parent start a brand new session (fresh UUID, empty history). */
+  onRequestNewChat: () => void
+  /** Notifies the parent that a "touch" (session metadata upsert) succeeded,
+   * so the sidebar can refresh its list (new title, updated ordering). */
+  onSessionTouched?: () => void
+}
+
+export default function ChatInterface({
+  sessionId,
+  initialMessages,
+  onRequestNewChat,
+  onSessionTouched,
+}: ChatInterfaceProps) {
+  const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [client, setClient] = useState<AgentCoreClient | null>(null)
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID())
 
   const { isLoading, setIsLoading } = useGlobal()
   const auth = useAuth()
+
+  // Mirrors `messages` so the post-send "touch" call (below) can read the
+  // latest conversation without depending on stale closure state.
+  const messagesRef = useRef<Message[]>(initialMessages)
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   // Ref for message container to enable auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -186,6 +211,24 @@ export default function ChatInterface() {
           }
         }
       })
+      // Fire-and-forget "touch": upserts this session's sidebar metadata.
+      // On the very first exchange (only 2 messages so far: this user message
+      // + the assistant response just streamed), the backend also generates
+      // a title via Bedrock. Later touches just refresh updatedAt. This must
+      // not block the UI, so errors are logged but not surfaced to the user —
+      // a failed touch only means the sidebar entry is stale, not that the
+      // chat itself failed.
+      const idTokenForTouch = auth.user?.id_token
+      if (idTokenForTouch) {
+        const latestMessages = messagesRef.current
+        const firstUserMessage = latestMessages.find(m => m.role === "user")?.content
+        const firstAssistantMessage = latestMessages.find(m => m.role === "assistant")?.content
+        if (firstUserMessage) {
+          touchSession(sessionId, firstUserMessage, firstAssistantMessage, idTokenForTouch)
+            .then(() => onSessionTouched?.())
+            .catch(err => console.error("Failed to touch session:", err))
+        }
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error"
       setError(`Failed to get response: ${errorMessage}`)
@@ -245,15 +288,6 @@ export default function ChatInterface() {
     }
   }
 
-  // Start a new chat by clearing messages and generating a fresh session ID.
-  // A new UUID is required so the backend treats this as a distinct conversation context.
-  const startNewChat = () => {
-    setMessages([])
-    setInput("")
-    setError(null)
-    setSessionId(crypto.randomUUID())
-  }
-
   // Check if this is the initial state (no messages)
   const isInitialState = messages.length === 0
 
@@ -264,7 +298,7 @@ export default function ChatInterface() {
     <div className="flex flex-col h-screen w-full">
       {/* Fixed header */}
       <div className="flex-none">
-        <ChatHeader onNewChat={startNewChat} canStartNewChat={hasAssistantMessages} />
+        <ChatHeader onNewChat={onRequestNewChat} canStartNewChat={hasAssistantMessages} />
         {error && (
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mx-4 mt-2">
             <p className="text-sm text-red-700">{error}</p>

@@ -157,18 +157,20 @@ agent_id = "my-agent-abc123"  # Replace with your actual agent ID
 response = eval_client.create_online_config(
     agent_id=agent_id,
     config_name="production_eval",
-    sampling_rate=10.0,                    # Evaluate 10% of sessions
+    sampling_rate=10.0,  # Evaluate 10% of sessions
     evaluator_list=[
         "Builtin.Helpfulness",
         "Builtin.Correctness",
         "Builtin.GoalSuccessRate",
     ],
     config_description="Production evaluation with core metrics",
-    auto_create_execution_role=True,       # Creates IAM role automatically
-    enable_on_create=True,                 # Start evaluating immediately
+    auto_create_execution_role=True,  # Creates IAM role automatically
+    enable_on_create=True,  # Start evaluating immediately
 )
 
-config_id = response["onlineEvaluationConfigId"]  # Save this — you'll need it to query metrics
+config_id = response[
+    "onlineEvaluationConfigId"
+]  # Save this — you'll need it to query metrics
 print(f"Created config: {config_id}")
 print(f"Status: {response['executionStatus']}")
 ```
@@ -183,14 +185,11 @@ Use this to temporarily pause evaluations without losing the configuration (e.g.
 # Disable evaluation (pause without deleting)
 eval_client.update_online_config(
     config_id="your-config-id",  # Replace with actual config ID
-    execution_status="DISABLED"
+    execution_status="DISABLED",
 )
 
 # Re-enable evaluation
-eval_client.update_online_config(
-    config_id="your-config-id",
-    execution_status="ENABLED"
-)
+eval_client.update_online_config(config_id="your-config-id", execution_status="ENABLED")
 ```
 
 ### Update Sampling Rate
@@ -200,7 +199,7 @@ Use this to adjust cost vs. coverage tradeoff without recreating the config.
 ```python
 eval_client.update_online_config(
     config_id="your-config-id",
-    sampling_rate=5.0  # Reduce to 5% for cost savings
+    sampling_rate=5.0,  # Reduce to 5% for cost savings
 )
 ```
 
@@ -209,8 +208,10 @@ eval_client.update_online_config(
 ```python
 configs = eval_client.list_online_configs()
 for config in configs.get("onlineEvaluationConfigs", []):
-    print(f"{config['onlineEvaluationConfigName']}: {config['executionStatus']} "
-          f"(sampling: {config.get('samplingRate', 'N/A')}%)")
+    print(
+        f"{config['onlineEvaluationConfigName']}: {config['executionStatus']} "
+        f"(sampling: {config.get('samplingRate', 'N/A')}%)"
+    )
 ```
 
 ### Delete a Config
@@ -252,14 +253,14 @@ from bedrock_agentcore_starter_toolkit import Evaluation
 
 eval_client = Evaluation(region="us-east-1")
 
-agent_id = "my-agent-abc123"      # Replace with your actual agent ID
-session_id = "session-456"         # Replace with actual session ID
+agent_id = "my-agent-abc123"  # Replace with your actual agent ID
+session_id = "session-456"  # Replace with actual session ID
 
 # Run one or more evaluators against a session
 results = eval_client.run(
     agent_id=agent_id,
     session_id=session_id,
-    evaluators=["Builtin.Helpfulness", "Builtin.Correctness"]
+    evaluators=["Builtin.Helpfulness", "Builtin.Correctness"],
 )
 
 for result in results.results:
@@ -267,7 +268,7 @@ for result in results.results:
     print(f"  Score:       {result.value:.2f}")
     print(f"  Label:       {result.label}")
     print(f"  Explanation: {result.explanation}")
-    if hasattr(result, 'token_usage') and result.token_usage:
+    if hasattr(result, "token_usage") and result.token_usage:
         print(f"  Tokens:      {result.token_usage}")
     print()
 ```
@@ -291,18 +292,16 @@ response = bedrock_agentcore.evaluate(
                 "name": "agent_response",
                 "startTimeUnixNano": 1708128000000000000,
                 "endTimeUnixNano": 1708128001000000000,
-                "attributes": {
-                    "session.id": "session-456"
-                },
+                "attributes": {"session.id": "session-456"},
                 "status": {"code": "OK"},
-                "scope": {"name": "bedrock-agentcore"}
+                "scope": {"name": "bedrock-agentcore"},
             }
         ]
     },
     evaluationTarget={
-        "traceIds": ["abc123"],    # Optional: scope to specific traces
-        "spanIds": ["def456"]      # Optional: scope to specific spans
-    }
+        "traceIds": ["abc123"],  # Optional: scope to specific traces
+        "spanIds": ["def456"],  # Optional: scope to specific spans
+    },
 )
 
 for result in response.get("evaluationResults", []):
@@ -325,22 +324,22 @@ all_results = []
 for session_id in session_ids:
     try:
         results = eval_client.run(
-            agent_id=agent_id,
-            session_id=session_id,
-            evaluators=evaluators
+            agent_id=agent_id, session_id=session_id, evaluators=evaluators
         )
-        all_results.append({
-            "session_id": session_id,
-            "results": [
-                {
-                    "evaluator": r.evaluator_name,
-                    "score": r.value,
-                    "label": r.label,
-                    "explanation": r.explanation
-                }
-                for r in results.results
-            ]
-        })
+        all_results.append(
+            {
+                "session_id": session_id,
+                "results": [
+                    {
+                        "evaluator": r.evaluator_name,
+                        "score": r.value,
+                        "label": r.label,
+                        "explanation": r.explanation,
+                    }
+                    for r in results.results
+                ],
+            }
+        )
     except Exception as e:
         print(f"Failed to evaluate {session_id}: {e}")
 
@@ -467,41 +466,38 @@ response = control_client.create_evaluator(
                     {
                         "value": 1.0,
                         "label": "Very Good",
-                        "definition": "Completely accurate, all facts and calculations correct"
+                        "definition": "Completely accurate, all facts and calculations correct",
                     },
                     {
                         "value": 0.75,
                         "label": "Good",
-                        "definition": "Mostly accurate with minor issues"
+                        "definition": "Mostly accurate with minor issues",
                     },
                     {
                         "value": 0.5,
                         "label": "OK",
-                        "definition": "Partially correct with notable errors"
+                        "definition": "Partially correct with notable errors",
                     },
                     {
                         "value": 0.25,
                         "label": "Poor",
-                        "definition": "Significant errors or misconceptions"
+                        "definition": "Significant errors or misconceptions",
                     },
                     {
                         "value": 0.0,
                         "label": "Very Poor",
-                        "definition": "Completely incorrect or irrelevant"
-                    }
+                        "definition": "Completely incorrect or irrelevant",
+                    },
                 ]
             },
             "modelConfig": {
                 "bedrockEvaluatorModelConfig": {
                     "modelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "inferenceConfig": {
-                        "maxTokens": 500,
-                        "temperature": 1.0
-                    }
+                    "inferenceConfig": {"maxTokens": 500, "temperature": 1.0},
                 }
-            }
+            },
         }
-    }
+    },
 )
 
 evaluator_arn = response["evaluatorArn"]
@@ -525,7 +521,7 @@ custom_evaluator = eval_client.create_evaluator(
     name="domain_accuracy",
     level="TRACE",
     description="Evaluates domain-specific accuracy for financial queries",
-    config=evaluator_config
+    config=evaluator_config,
 )
 ```
 
@@ -575,11 +571,13 @@ config = control_client.get_online_evaluation_config(
 current_evaluators = [e["evaluatorId"] for e in config.get("evaluators", [])]
 
 # Add the custom evaluator
-current_evaluators.append("domain_accuracy-XXXXXXXXXX")  # Use the ID from create_evaluator
+current_evaluators.append(
+    "domain_accuracy-XXXXXXXXXX"
+)  # Use the ID from create_evaluator
 
 control_client.update_online_evaluation_config(
     onlineEvaluationConfigId="your-config-id",
-    evaluators=[{"evaluatorId": eid} for eid in current_evaluators]
+    evaluators=[{"evaluatorId": eid} for eid in current_evaluators],
 )
 ```
 
@@ -710,18 +708,22 @@ import csv
 
 with open("evaluation_results.csv", "w", newline="") as f:
     writer = csv.writer(f)
-    writer.writerow(["session_id", "trace_id", "evaluator", "score", "label", "explanation"])
+    writer.writerow(
+        ["session_id", "trace_id", "evaluator", "score", "label", "explanation"]
+    )
 
     for result in results:
         attrs = result.get("attributes", {})
-        writer.writerow([
-            result.get("sessionId", ""),
-            result.get("traceId", ""),
-            attrs.get("gen_ai.evaluation.name", ""),
-            attrs.get("gen_ai.evaluation.score.value", ""),
-            attrs.get("gen_ai.evaluation.score.label", ""),
-            attrs.get("gen_ai.evaluation.explanation", ""),
-        ])
+        writer.writerow(
+            [
+                result.get("sessionId", ""),
+                result.get("traceId", ""),
+                attrs.get("gen_ai.evaluation.name", ""),
+                attrs.get("gen_ai.evaluation.score.value", ""),
+                attrs.get("gen_ai.evaluation.score.label", ""),
+                attrs.get("gen_ai.evaluation.explanation", ""),
+            ]
+        )
 ```
 
 ### Compute Aggregate Metrics from Results
@@ -777,6 +779,7 @@ def compute_score_distribution(results):
 
     return bins
 
+
 distribution = compute_score_distribution(results)
 for range_label, count in distribution.items():
     print(f"  {range_label}: {count}")
@@ -825,14 +828,15 @@ import json
 
 bedrock_runtime = boto3.client("bedrock-runtime")
 
+
 def analyze_evaluation_patterns(low_scoring_results: list[dict]) -> dict:
     """
     Analyze low-scoring evaluation results to identify failure patterns.
-    
+
     Args:
         low_scoring_results: Evaluation result logs from CloudWatch
             (filtered to scores below your threshold, e.g., <= 0.5)
-    
+
     Returns:
         Analysis with patterns, summary, and recommendations
     """
@@ -840,13 +844,15 @@ def analyze_evaluation_patterns(low_scoring_results: list[dict]) -> dict:
     formatted = []
     for result in low_scoring_results[:50]:  # Limit to avoid token overflow
         attrs = result.get("attributes", {})
-        formatted.append({
-            "session_id": attrs.get("session.id", "unknown"),
-            "evaluator": attrs.get("gen_ai.evaluation.name", "unknown"),
-            "score": attrs.get("gen_ai.evaluation.score.value", 0.0),
-            "label": attrs.get("gen_ai.evaluation.score.label", ""),
-            "explanation": attrs.get("gen_ai.evaluation.explanation", ""),
-        })
+        formatted.append(
+            {
+                "session_id": attrs.get("session.id", "unknown"),
+                "evaluator": attrs.get("gen_ai.evaluation.name", "unknown"),
+                "score": attrs.get("gen_ai.evaluation.score.value", 0.0),
+                "label": attrs.get("gen_ai.evaluation.score.label", ""),
+                "explanation": attrs.get("gen_ai.evaluation.explanation", ""),
+            }
+        )
 
     system_prompt = """You are an expert at analyzing agent evaluation data to identify 
 patterns and root causes of poor performance. For each pattern you identify:
@@ -859,19 +865,26 @@ Return JSON: {"patterns": [...], "summary": "...", "recommendations": [...]}"""
 
     response = bedrock_runtime.invoke_model(
         modelId="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        body=json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 4096,
-            "system": system_prompt,
-            "messages": [{"role": "user", "content": f"""
+        body=json.dumps(
+            {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 4096,
+                "system": system_prompt,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": f"""
 Analyze these {len(formatted)} low-scoring evaluations and identify common patterns:
 
 {json.dumps(formatted, indent=2)}
 
 Focus on: which evaluators score low consistently, common issues in explanations,
-and actionable patterns across sessions."""}],
-            "temperature": 0.7,
-        }),
+and actionable patterns across sessions.""",
+                    }
+                ],
+                "temperature": 0.7,
+            }
+        ),
     )
 
     response_body = json.loads(response["body"].read())
@@ -892,11 +905,11 @@ Use this after pattern analysis to automatically generate a better system prompt
 def generate_prompt_improvement(current_prompt: str, analysis: dict) -> dict:
     """
     Generate an improved system prompt based on analysis of failure patterns.
-    
+
     Args:
         current_prompt: The agent's current system prompt
         analysis: Output from analyze_evaluation_patterns()
-    
+
     Returns:
         Dict with improvedPrompt and list of changes with reasoning
     """
@@ -923,20 +936,27 @@ Return JSON: {"improvedPrompt": "...", "changes": [{"section": "...",
 
     response = bedrock_runtime.invoke_model(
         modelId="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        body=json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 8192,
-            "system": system_prompt,
-            "messages": [{"role": "user", "content": f"""
+        body=json.dumps(
+            {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 8192,
+                "system": system_prompt,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": f"""
 Current System Prompt:
 {current_prompt}
 
 Performance Analysis:
 {json.dumps(analysis_summary, indent=2)}
 
-Generate an improved prompt that addresses these issues."""}],
-            "temperature": 0.7,
-        }),
+Generate an improved prompt that addresses these issues.""",
+                    }
+                ],
+                "temperature": 0.7,
+            }
+        ),
     )
 
     response_body = json.loads(response["body"].read())
@@ -953,7 +973,8 @@ Putting it all together — from querying results to generating an improved prom
 # 1. Query low-scoring evaluation results (see "Downloading & Querying Results")
 results = query_evaluation_results("your-config-id", days=30)
 low_scoring = [
-    r for r in results
+    r
+    for r in results
     if r.get("attributes", {}).get("gen_ai.evaluation.score.value", 1.0) <= 0.5
 ]
 print(f"Found {len(low_scoring)} low-scoring evaluations")
@@ -1029,8 +1050,10 @@ print(f"Total spans: {len(trace_data.spans)}")
 for trace_id, spans in trace_data.traces.items():
     print(f"\nTrace {trace_id}: {len(spans)} spans")
     for span in sorted(spans, key=lambda s: s.start_time_unix_nano or 0):
-        print(f"  {span.span_name} ({span.duration_ms}ms) "
-              f"parent={span.parent_span_id or 'root'}")
+        print(
+            f"  {span.span_name} ({span.duration_ms}ms) "
+            f"parent={span.parent_span_id or 'root'}"
+        )
 ```
 
 ### Span Properties
@@ -1056,6 +1079,7 @@ Use this helper to convert SDK trace data into a JSON-serializable structure sui
 ```python
 from datetime import datetime
 
+
 def format_session_for_display(trace_data) -> dict:
     """Format SDK trace data into a JSON-serializable structure."""
     formatted_traces = []
@@ -1066,29 +1090,37 @@ def format_session_for_display(trace_data) -> dict:
 
         spans.sort(key=lambda s: s.start_time_unix_nano or 0)
 
-        trace_start = min(s.start_time_unix_nano for s in spans if s.start_time_unix_nano)
+        trace_start = min(
+            s.start_time_unix_nano for s in spans if s.start_time_unix_nano
+        )
         trace_end = max(s.end_time_unix_nano for s in spans if s.end_time_unix_nano)
 
-        formatted_traces.append({
-            "traceId": trace_id,
-            "startTime": datetime.fromtimestamp(trace_start / 1e9).isoformat(),
-            "endTime": datetime.fromtimestamp(trace_end / 1e9).isoformat(),
-            "durationMs": (trace_end - trace_start) / 1e6,
-            "spans": [
-                {
-                    "spanId": s.span_id,
-                    "traceId": s.trace_id,
-                    "parentSpanId": s.parent_span_id,
-                    "name": s.span_name,
-                    "startTime": datetime.fromtimestamp(s.start_time_unix_nano / 1e9).isoformat(),
-                    "endTime": datetime.fromtimestamp(s.end_time_unix_nano / 1e9).isoformat(),
-                    "durationMs": s.duration_ms,
-                    "status": s.status_code or "UNSET",
-                    "attributes": s.attributes or {},
-                }
-                for s in spans
-            ],
-        })
+        formatted_traces.append(
+            {
+                "traceId": trace_id,
+                "startTime": datetime.fromtimestamp(trace_start / 1e9).isoformat(),
+                "endTime": datetime.fromtimestamp(trace_end / 1e9).isoformat(),
+                "durationMs": (trace_end - trace_start) / 1e6,
+                "spans": [
+                    {
+                        "spanId": s.span_id,
+                        "traceId": s.trace_id,
+                        "parentSpanId": s.parent_span_id,
+                        "name": s.span_name,
+                        "startTime": datetime.fromtimestamp(
+                            s.start_time_unix_nano / 1e9
+                        ).isoformat(),
+                        "endTime": datetime.fromtimestamp(
+                            s.end_time_unix_nano / 1e9
+                        ).isoformat(),
+                        "durationMs": s.duration_ms,
+                        "status": s.status_code or "UNSET",
+                        "attributes": s.attributes or {},
+                    }
+                    for s in spans
+                ],
+            }
+        )
 
     formatted_traces.sort(key=lambda t: t["startTime"])
     return {
@@ -1199,7 +1231,9 @@ def aggregate_metrics(all_config_metrics: list[dict]) -> dict:
         weighted_score_sum += metrics["averageScore"] * count
 
         for bin_key, bin_count in metrics.get("scoreDistribution", {}).items():
-            combined_distribution[bin_key] = combined_distribution.get(bin_key, 0) + bin_count
+            combined_distribution[bin_key] = (
+                combined_distribution.get(bin_key, 0) + bin_count
+            )
 
         for eval_id, eval_metrics in metrics.get("evaluatorMetrics", {}).items():
             if eval_id not in combined_evaluators:
@@ -1263,7 +1297,7 @@ To control costs, set a retention policy on evaluation log groups:
 ```python
 cloudwatch_logs.put_retention_policy(
     logGroupName=f"/aws/bedrock-agentcore/evaluations/results/{config_id}",
-    retentionInDays=90  # Keep results for 90 days
+    retentionInDays=90,  # Keep results for 90 days
 )
 ```
 

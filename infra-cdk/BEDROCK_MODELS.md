@@ -24,8 +24,7 @@
 ```python
 # patterns/strands-single-agent/basic_agent.py
 bedrock_model = BedrockModel(
-    model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    temperature=0.1
+    model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0", temperature=0.1
 )
 ```
 
@@ -80,7 +79,7 @@ us.mistral.mistral-7b-instruct-v0:2
 
 ```python
 # Temperatura (0 = determinístico, 1 = criativo)
-temperature=0.1  # Muito preciso (ideal para jurídico)
+temperature = 0.1  # Muito preciso (ideal para jurídico)
 
 # Alternativas:
 # temperature=0.3  # Mais criativo

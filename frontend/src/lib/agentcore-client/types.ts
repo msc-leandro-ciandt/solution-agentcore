@@ -3,10 +3,7 @@
 
 /** Supported agent pattern prefixes — determines the frontend parser */
 export type AgentPattern =
-  | `agui-${string}`
-  | `strands-${string}`
-  | `langgraph-${string}`
-  | `claude-${string}`
+  `agui-${string}` | `strands-${string}` | `langgraph-${string}` | `claude-${string}`
 
 /** Configuration for AgentCoreClient */
 export interface AgentCoreConfig {

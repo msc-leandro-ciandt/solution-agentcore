@@ -210,9 +210,7 @@ data: {"event": {"metadata": {"usage": {"inputTokens": 88, "outputTokens": 30}}}
 ```python
 # Stream with messages mode - yields raw LangChain message chunks
 async for event in graph.astream(
-    {"messages": [("user", user_query)]},
-    config=config,
-    stream_mode="messages"
+    {"messages": [("user", user_query)]}, config=config, stream_mode="messages"
 ):
     message_chunk, metadata = event
     yield message_chunk.model_dump()  # Serialize to JSON-safe dict

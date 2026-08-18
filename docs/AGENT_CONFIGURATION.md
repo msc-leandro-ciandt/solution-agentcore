@@ -31,14 +31,16 @@ A basic conversational agent using the Strands framework with AgentCore Memory i
 ```python
 bedrock_model = BedrockModel(
     model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",  # ← Change model here
-    temperature=0.1
+    temperature=0.1,
 )
 ```
 
 **System Prompt** (`patterns/strands-single-agent/basic_agent.py`):
 
 ```python
-system_prompt = """You are a helpful assistant. Answer questions clearly and concisely."""
+system_prompt = (
+    """You are a helpful assistant. Answer questions clearly and concisely."""
+)
 ```
 
 **After making changes**: See [Deployment Guide](DEPLOYMENT.md) for redeployment instructions.
@@ -69,7 +71,7 @@ A conversational agent using LangGraph with AgentCore Memory and Gateway integra
 bedrock_model = ChatBedrock(
     model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",  # ← Change model here
     temperature=0.1,
-    streaming=True
+    streaming=True,
 )
 ```
 
@@ -83,11 +85,7 @@ mcp_client = await create_gateway_mcp_client(user_id)
 tools = await mcp_client.get_tools()
 
 # Create agent with tools
-graph = create_react_agent(
-    model=bedrock_model,
-    tools=tools,
-    checkpointer=checkpointer
-)
+graph = create_react_agent(model=bedrock_model, tools=tools, checkpointer=checkpointer)
 ```
 
 **After making changes**: See [Deployment Guide](DEPLOYMENT.md) for redeployment instructions.
@@ -120,6 +118,7 @@ from utils.auth import extract_user_id_from_context
 
 app = BedrockAgentCoreApp()
 
+
 @app.entrypoint
 async def agent_handler(payload, context: RequestContext):
     """Main entrypoint for the agent"""
@@ -134,6 +133,7 @@ async def agent_handler(payload, context: RequestContext):
     # ...
 
     yield response
+
 
 if __name__ == "__main__":
     app.run()

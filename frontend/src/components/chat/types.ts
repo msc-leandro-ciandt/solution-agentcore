@@ -12,21 +12,11 @@ export interface ToolCall {
 }
 
 export type MessageSegment =
-  | { type: "text"; content: string }
-  | { type: "tool"; toolCall: ToolCall }
+  { type: "text"; content: string } | { type: "tool"; toolCall: ToolCall }
 
 export interface Message {
   role: MessageRole
   content: string
   timestamp: string
   segments?: MessageSegment[]
-}
-
-// Define chat session types
-export interface ChatSession {
-  id: string
-  name: string
-  history: Message[]
-  startDate: string
-  endDate: string
 }

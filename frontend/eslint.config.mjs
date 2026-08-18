@@ -16,7 +16,13 @@ const eslintConfig = [
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/no-unused-vars": "warn",
+      // Variables/args prefixed with "_" (e.g. destructured-but-intentionally-
+      // unused props like `sessionId: _sessionId`) are exempt — this is the
+      // existing convention used across the codebase.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
     },
   },
   {

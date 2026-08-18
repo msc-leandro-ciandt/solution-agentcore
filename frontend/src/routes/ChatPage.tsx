@@ -80,7 +80,11 @@ export default function ChatPage() {
 
   const handleSessionSelect = useCallback(
     async (session: SessionSummary) => {
-      console.log(`[ChatPage] Selecting session: ${session.sessionId}, name: "${session.name}"`)
+      console.log(`[ChatPage] ========== SELECTING SESSION ==========`)
+      console.log(`[ChatPage] Requested sessionId: ${session.sessionId}`)
+      console.log(`[ChatPage] Session name: "${session.name}"`)
+      console.log(`[ChatPage] Current state sessionId BEFORE: ${sessionId}`)
+      
       if (!idToken) {
         console.error("[ChatPage] No idToken available")
         return
@@ -94,6 +98,7 @@ export default function ChatPage() {
         console.log(`[ChatPage] Fetching session details for: ${session.sessionId}`)
         const detail = await getSession(session.sessionId, idToken)
         console.log(`[ChatPage] Got ${detail.messages.length} messages`)
+        console.log(`[ChatPage] First message sample:`, detail.messages[0])
         
         const loadedMessages = detail.messages.map(m => ({
           role: m.role,
@@ -102,16 +107,18 @@ export default function ChatPage() {
         }))
         
         console.log(`[ChatPage] Setting initialMessages with ${loadedMessages.length} items`)
-        console.log(`[ChatPage] Setting sessionId to: ${session.sessionId}`)
+        console.log(`[ChatPage] localStorage BEFORE: ${localStorage.getItem(CURRENT_SESSION_STORAGE_KEY)}`)
         
         // Set messages FIRST, then sessionId. Because isHydrating is still true,
         // ChatInterface won't render yet. By the time it does (when isHydrating
         // becomes false), both initialMessages and sessionId will be in sync.
         setInitialMessages(loadedMessages)
         persistSessionId(session.sessionId)
+        console.log(`[ChatPage] localStorage AFTER: ${localStorage.getItem(CURRENT_SESSION_STORAGE_KEY)}`)
         setSessionId(session.sessionId)
+        console.log(`[ChatPage] State sessionId set to: ${session.sessionId}`)
+        console.log(`[ChatPage] ========== SESSION SELECTED ==========`)
         
-        console.log(`[ChatPage] State updated. Showing interface now...`)
         // Now it's safe to show the new ChatInterface with fresh messages
         setIsHydrating(false)
       } catch (err) {
@@ -125,7 +132,7 @@ export default function ChatPage() {
         setIsHydrating(false)
       }
     },
-    [idToken]
+    [idToken, sessionId]
   )
 
   const handleSessionDelete = useCallback(

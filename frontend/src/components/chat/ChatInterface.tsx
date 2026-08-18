@@ -52,7 +52,7 @@ export default function ChatInterface({
   // Sync initialMessages if it changes (e.g., on session switch)
   useEffect(() => {
     setMessages(initialMessages)
-  }, [initialMessages])
+  }, [initialMessages, sessionId])
 
   // Ref for message container to enable auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null)

@@ -2,7 +2,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, useRef } from "react"
 import ChatInterface from "@/components/chat/ChatInterface"
 import { ChatSidebar } from "@/components/chat/ChatSidebar"
 import { Message } from "@/components/chat/types"
@@ -47,6 +47,9 @@ export default function ChatPage() {
   const [initialMessages, setInitialMessages] = useState<Message[]>([])
   const [isHydrating, setIsHydrating] = useState(false)
 
+  // Track the previous sessionId to detect when it changes
+  const prevSessionIdRef = useRef(sessionId)
+
   const { sessions, refresh: refreshSessions, remove: removeSession } = useChatSessions(idToken)
 
   // On mount, if the persisted session ID corresponds to a real past
@@ -88,6 +91,12 @@ export default function ChatPage() {
     // sessionId change — session switches are handled explicitly by handleSessionSelect.
   }, [idToken])
 
+  // When sessionId changes, update the ref. This helps track session transitions
+  // and ensure initialMessages stays in sync with the active session.
+  useEffect(() => {
+    prevSessionIdRef.current = sessionId
+  }, [sessionId])
+
   const handleNewChat = useCallback(() => {
     const newId = crypto.randomUUID()
     persistSessionId(newId)
@@ -98,6 +107,7 @@ export default function ChatPage() {
   const handleSessionSelect = useCallback(
     async (session: SessionSummary) => {
       if (!idToken) return
+      // Keep isHydrating true to hide old ChatInterface during the transition
       setIsHydrating(true)
       try {
         const detail = await getSession(session.sessionId, idToken)
@@ -106,15 +116,17 @@ export default function ChatPage() {
           content: m.content,
           timestamp: m.timestamp,
         }))
-        // Set messages BEFORE changing sessionId, so ChatInterface remounts
-        // with the correct initialMessages. Otherwise it remounts with stale data.
+        // Set messages FIRST, then sessionId. Because isHydrating is still true,
+        // ChatInterface won't render yet. By the time it does (when isHydrating
+        // becomes false), both initialMessages and sessionId will be in sync.
         setInitialMessages(loadedMessages)
         persistSessionId(session.sessionId)
         setSessionId(session.sessionId)
+        // Now it's safe to show the new ChatInterface with fresh messages
+        setIsHydrating(false)
       } catch (err) {
         console.error("Failed to load session history:", err)
         setInitialMessages([])
-      } finally {
         setIsHydrating(false)
       }
     },

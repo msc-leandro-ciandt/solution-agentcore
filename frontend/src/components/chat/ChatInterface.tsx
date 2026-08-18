@@ -51,7 +51,6 @@ export default function ChatInterface({
 
   // Sync initialMessages if it changes (e.g., on session switch)
   useEffect(() => {
-    console.log(`[ChatInterface] initialMessages updated: ${initialMessages.length} messages`)
     setMessages(initialMessages)
   }, [initialMessages])
 

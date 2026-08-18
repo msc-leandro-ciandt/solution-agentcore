@@ -98,7 +98,6 @@ export default function ChatPage() {
   const handleSessionSelect = useCallback(
     async (session: SessionSummary) => {
       if (!idToken) return
-      console.log(`[handleSessionSelect] Selecting session ${session.sessionId} (was ${sessionId})`)
       setIsHydrating(true)
       try {
         const detail = await getSession(session.sessionId, idToken)
@@ -107,13 +106,11 @@ export default function ChatPage() {
           content: m.content,
           timestamp: m.timestamp,
         }))
-        console.log(`[handleSessionSelect] Loaded ${loadedMessages.length} messages`)
         // Set messages BEFORE changing sessionId, so ChatInterface remounts
         // with the correct initialMessages. Otherwise it remounts with stale data.
         setInitialMessages(loadedMessages)
         persistSessionId(session.sessionId)
         setSessionId(session.sessionId)
-        console.log(`[handleSessionSelect] Updated sessionId to ${session.sessionId}`)
       } catch (err) {
         console.error("Failed to load session history:", err)
         setInitialMessages([])
@@ -121,7 +118,7 @@ export default function ChatPage() {
         setIsHydrating(false)
       }
     },
-    [idToken, sessionId]
+    [idToken]
   )
 
   const handleSessionDelete = useCallback(

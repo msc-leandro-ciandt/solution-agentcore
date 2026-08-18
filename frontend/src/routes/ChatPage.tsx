@@ -43,7 +43,11 @@ export default function ChatPage() {
   // to `undefined` so downstream hooks/functions only deal with one "absent" value.
   const idToken = rawIdToken ?? undefined
 
-  const [sessionId, setSessionId] = useState<string>(() => loadPersistedSessionId())
+  const [sessionId, setSessionId] = useState<string>(() => {
+    const persisted = loadPersistedSessionId()
+    console.log(`[ChatPage] MOUNT: loadPersistedSessionId returned: ${persisted}`)
+    return persisted
+  })
   const [initialMessages, setInitialMessages] = useState<Message[]>([])
   const [isHydrating, setIsHydrating] = useState(false)
 

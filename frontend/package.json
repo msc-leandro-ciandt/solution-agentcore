@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.62.1",
     "@shadcn/ui": "^0.0.4",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.1.5",

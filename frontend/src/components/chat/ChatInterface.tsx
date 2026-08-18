@@ -49,6 +49,12 @@ export default function ChatInterface({
     messagesRef.current = messages
   }, [messages])
 
+  // Sync initialMessages if it changes (e.g., on session switch)
+  useEffect(() => {
+    console.log(`[ChatInterface] initialMessages updated: ${initialMessages.length} messages`)
+    setMessages(initialMessages)
+  }, [initialMessages])
+
   // Ref for message container to enable auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null)
 

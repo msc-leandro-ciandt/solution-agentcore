@@ -347,6 +347,10 @@ def _delete_session_events_best_effort(user_id: str, session_id: str) -> None:
 def list_sessions() -> Any:
     """
     Handle GET /sessions — list the authenticated user's chat sessions.
+    
+    Combines sessions from both DynamoDB (metadata) and AgentCore Memory (for resilience).
+    Sessions in Memory but not in DynamoDB are included with minimal metadata.
+    Sessions in DynamoDB are preferred (they have real names/timestamps).
 
     Returns:
         List of session metadata dicts, sorted by updatedAt descending.
@@ -356,23 +360,62 @@ def list_sessions() -> Any:
         return {"error": "Unauthorized"}, 401
 
     try:
-        response = dynamodb.query(
+        # Get sessions from DynamoDB (metadata with nice names/timestamps)
+        ddb_response = dynamodb.query(
             TableName=TABLE_NAME,
             KeyConditionExpression="userId = :userId",
             ExpressionAttributeValues={":userId": {"S": user_id}},
         )
 
-        sessions = [
-            {
+        ddb_sessions = {
+            item["sessionId"]["S"]: {
                 "sessionId": item["sessionId"]["S"],
                 "name": item["name"]["S"],
                 "createdAt": item["createdAt"]["S"],
                 "updatedAt": item["updatedAt"]["S"],
             }
-            for item in response.get("Items", [])
-        ]
-        sessions.sort(key=lambda s: s["updatedAt"], reverse=True)
-        return sessions
+            for item in ddb_response.get("Items", [])
+        }
+
+        # Also get sessions from AgentCore Memory (source of truth for what conversations exist)
+        # This ensures we list conversations even if DynamoDB metadata is missing
+        memory_sessions = {}
+        try:
+            next_token: Optional[str] = None
+            while True:
+                kwargs: Dict[str, Any] = {
+                    "memoryId": MEMORY_ID,
+                    "actorId": user_id,
+                }
+                if next_token:
+                    kwargs["nextToken"] = next_token
+
+                response = agentcore_data_plane.list_sessions(**kwargs)
+                for session_summary in response.get("sessionSummaries", []):
+                    session_id = session_summary.get("sessionId")
+                    created_at = session_summary.get("createdAt")
+                    if session_id:
+                        # If not in DynamoDB, add minimal entry from Memory
+                        if session_id not in ddb_sessions:
+                            memory_sessions[session_id] = {
+                                "sessionId": session_id,
+                                "name": f"Conversa em {created_at[:10]}" if created_at else "Conversa",
+                                "createdAt": str(created_at) if created_at else "",
+                                "updatedAt": str(created_at) if created_at else "",
+                            }
+
+                next_token = response.get("nextToken")
+                if not next_token:
+                    break
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Could not list Memory sessions (non-fatal): {exc}")
+            # Continue with just DynamoDB sessions if Memory listing fails
+
+        # Merge: DynamoDB sessions (with real names) take precedence
+        all_sessions = {**memory_sessions, **ddb_sessions}
+        sessions_list = list(all_sessions.values())
+        sessions_list.sort(key=lambda s: s["updatedAt"], reverse=True)
+        return sessions_list
 
     except ClientError as e:
         logger.error(

@@ -70,11 +70,15 @@ async function parseJsonOrThrow<T>(response: Response): Promise<T> {
  */
 export async function listSessions(idToken: string): Promise<SessionSummary[]> {
   const baseUrl = await loadApiBaseUrl()
+  console.log(`[SessionService] Listing sessions for user...`)
   const response = await fetch(`${baseUrl}sessions`, {
     method: "GET",
     headers: authHeaders(idToken),
   })
-  return parseJsonOrThrow<SessionSummary[]>(response)
+  const result = await parseJsonOrThrow<SessionSummary[]>(response)
+  console.log(`[SessionService] Got ${result.length} sessions`)
+  result.forEach(s => console.log(`[SessionService]   - ${s.name} (${s.sessionId})`))
+  return result
 }
 
 /**

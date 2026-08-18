@@ -55,40 +55,14 @@ export default function ChatPage() {
   // On mount, if the persisted session ID corresponds to a real past
   // conversation, hydrate the chat window with its history instead of
   // starting from an empty screen.
+  //
+  // NOTE: Sessions are created lazily via touchSession() (PUT /sessions/{id})
+  // after the first message exchange. On initial mount, we don't know if
+  // this session exists yet, so we don't try to load it. The sidebar will
+  // handle listing existing sessions via listSessions().
   useEffect(() => {
-    if (!idToken) return
-    // Captured as a local const so TS's narrowing of `idToken` (from the
-    // guard above) carries into the nested hydrate() closure below.
-    const token = idToken
-    let cancelled = false
-
-    async function hydrate() {
-      setIsHydrating(true)
-      try {
-        const detail = await getSession(sessionId, token)
-        if (!cancelled) {
-          setInitialMessages(
-            detail.messages.map(m => ({
-              role: m.role,
-              content: m.content,
-              timestamp: m.timestamp,
-            }))
-          )
-        }
-      } catch {
-        // No stored session yet for this ID (e.g. brand new UUID, or the
-        // session was deleted) — that's expected, just start with an empty chat.
-      } finally {
-        if (!cancelled) setIsHydrating(false)
-      }
-    }
-
-    void hydrate()
-    return () => {
-      cancelled = true
-    }
-    // Only re-hydrate when the token first becomes available, not on every
-    // sessionId change — session switches are handled explicitly by handleSessionSelect.
+    // Session loading is only needed when explicitly selecting from sidebar
+    // (handleSessionSelect), not on initial mount. The first chat starts empty.
   }, [idToken])
 
   // When sessionId changes, update the ref. This helps track session transitions
@@ -106,13 +80,18 @@ export default function ChatPage() {
 
   const handleSessionSelect = useCallback(
     async (session: SessionSummary) => {
-      console.log(`[ChatPage] Selecting session: ${session.sessionId}`)
-      if (!idToken) return
+      console.log(`[ChatPage] Selecting session: ${session.sessionId}, name: "${session.name}"`)
+      if (!idToken) {
+        console.error("[ChatPage] No idToken available")
+        return
+      }
+      
+      console.log(`[ChatPage] idToken available: ${idToken.substring(0, 20)}...`)
       
       // Keep isHydrating true to hide old ChatInterface during the transition
       setIsHydrating(true)
       try {
-        console.log(`[ChatPage] Fetching session details...`)
+        console.log(`[ChatPage] Fetching session details for: ${session.sessionId}`)
         const detail = await getSession(session.sessionId, idToken)
         console.log(`[ChatPage] Got ${detail.messages.length} messages`)
         
@@ -137,6 +116,11 @@ export default function ChatPage() {
         setIsHydrating(false)
       } catch (err) {
         console.error("[ChatPage] Failed to load session history:", err)
+        console.error("[ChatPage] Error details:", {
+          sessionId: session.sessionId,
+          error: String(err),
+          message: err instanceof Error ? err.message : "Unknown"
+        })
         setInitialMessages([])
         setIsHydrating(false)
       }

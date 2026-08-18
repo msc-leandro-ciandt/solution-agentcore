@@ -106,26 +106,37 @@ export default function ChatPage() {
 
   const handleSessionSelect = useCallback(
     async (session: SessionSummary) => {
+      console.log(`[ChatPage] Selecting session: ${session.sessionId}`)
       if (!idToken) return
+      
       // Keep isHydrating true to hide old ChatInterface during the transition
       setIsHydrating(true)
       try {
+        console.log(`[ChatPage] Fetching session details...`)
         const detail = await getSession(session.sessionId, idToken)
+        console.log(`[ChatPage] Got ${detail.messages.length} messages`)
+        
         const loadedMessages = detail.messages.map(m => ({
           role: m.role,
           content: m.content,
           timestamp: m.timestamp,
         }))
+        
+        console.log(`[ChatPage] Setting initialMessages with ${loadedMessages.length} items`)
+        console.log(`[ChatPage] Setting sessionId to: ${session.sessionId}`)
+        
         // Set messages FIRST, then sessionId. Because isHydrating is still true,
         // ChatInterface won't render yet. By the time it does (when isHydrating
         // becomes false), both initialMessages and sessionId will be in sync.
         setInitialMessages(loadedMessages)
         persistSessionId(session.sessionId)
         setSessionId(session.sessionId)
+        
+        console.log(`[ChatPage] State updated. Showing interface now...`)
         // Now it's safe to show the new ChatInterface with fresh messages
         setIsHydrating(false)
       } catch (err) {
-        console.error("Failed to load session history:", err)
+        console.error("[ChatPage] Failed to load session history:", err)
         setInitialMessages([])
         setIsHydrating(false)
       }

@@ -34,6 +34,8 @@ export default function ChatInterface({
   onRequestNewChat,
   onSessionTouched,
 }: ChatInterfaceProps) {
+  console.log(`[ChatInterface] Mounted/Updated with sessionId: ${sessionId}, messages: ${initialMessages?.length || 0}`)
+  
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +53,7 @@ export default function ChatInterface({
 
   // Sync initialMessages if it changes (e.g., on session switch)
   useEffect(() => {
+    console.log(`[ChatInterface] useEffect: initialMessages changed to ${initialMessages?.length || 0} messages, sessionId=${sessionId}`)
     setMessages(initialMessages)
   }, [initialMessages, sessionId])
 

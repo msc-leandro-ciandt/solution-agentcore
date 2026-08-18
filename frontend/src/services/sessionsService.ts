@@ -86,11 +86,21 @@ export async function listSessions(idToken: string): Promise<SessionSummary[]> {
  */
 export async function getSession(sessionId: string, idToken: string): Promise<SessionDetail> {
   const baseUrl = await loadApiBaseUrl()
-  const response = await fetch(`${baseUrl}sessions/${encodeURIComponent(sessionId)}`, {
+  const url = `${baseUrl}sessions/${encodeURIComponent(sessionId)}`
+  console.log(`[SessionService] Fetching session: ${sessionId}`)
+  
+  const response = await fetch(url, {
     method: "GET",
     headers: authHeaders(idToken),
   })
-  return parseJsonOrThrow<SessionDetail>(response)
+  const result = await parseJsonOrThrow<SessionDetail>(response)
+  
+  console.log(`[SessionService] Got ${result.messages?.length || 0} messages for session ${sessionId}`)
+  if (result.messages && result.messages.length > 0) {
+    console.log(`[SessionService] First message: "${result.messages[0].content?.substring(0, 50)}..."`)
+  }
+  
+  return result
 }
 
 /**

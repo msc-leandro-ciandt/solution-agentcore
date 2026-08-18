@@ -157,36 +157,58 @@ After completing the manual testing, record results:
 
 ### File: `frontend/src/routes/ChatPage.tsx`
 
-**Key Change**: Fixed state update order in `handleSessionSelect()` callback
+**The Problem**: React batches state updates together. Even with `key={sessionId}`, both `initialMessages` and `sessionId` were updated in the same batch, causing the new ChatInterface to mount with stale `initialMessages`.
+
+**The Solution**: Use `isHydrating` as a gate to prevent rendering during the transition
 
 ```typescript
-// ✅ CORRECT ORDER (after fix):
-setInitialMessages(loadedMessages)  // FIRST - set messages BEFORE changing session
-persistSessionId(session.sessionId)
-setSessionId(session.sessionId)      // SECOND - then change session to trigger remount
+// ✅ CORRECT APPROACH (using isHydrating gate):
+const handleSessionSelect = async (session: SessionSummary) => {
+  setIsHydrating(true)  // Hide old interface - prevents rendering with stale data
+  
+  try {
+    const detail = await getSession(session.sessionId, idToken)
+    const loadedMessages = detail.messages.map(...)
+    
+    // All state updates happen in single batch
+    setInitialMessages(loadedMessages)
+    setSessionId(session.sessionId)
+    // Now initialMessages and sessionId are both fresh
+    
+    setIsHydrating(false)  // Show new interface - mounts with correct props
+  } catch (err) {
+    setIsHydrating(false)
+  }
+}
 
-// ❌ WRONG ORDER (bug):
-// setSessionId(session.sessionId)   // Changes session ID
-// setInitialMessages(loadedMessages) // Too late! Component already remounted with old data
+// Render condition that gates the component:
+{!isHydrating && (
+  <ChatInterface
+    key={sessionId}
+    initialMessages={initialMessages}
+    // ... other props
+  />
+)}
 ```
 
-**Why This Matters**:
-- React component has `key={sessionId}` which forces a full remount when sessionId changes
-- If messages are loaded AFTER the remount, the component initializes with empty messages
-- By loading messages FIRST, they're ready when the remount happens
+**Why This Works**:
+1. While `isHydrating=true`, the `ChatInterface` is not rendered at all
+2. React batches all the state updates (`initialMessages`, `sessionId`)
+3. When `isHydrating=false`, the component mounts with BOTH props correct
+4. No race condition between remount and prop synchronization
 
-### File: `frontend/src/routes/ChatPage.tsx`
+### File: `frontend/src/components/chat/ChatInterface.tsx`
 
-**React Key Binding**: Forces component remount on session change
+**Change**: Added `sessionId` to useEffect dependency array
 
 ```typescript
-<ChatInterface
-  key={sessionId}  // ← This key forces full remount when sessionId changes
-  sessionId={sessionId}
-  initialMessages={initialMessages}
-  ...
-/>
+// Sync initialMessages if it changes (e.g., on session switch)
+useEffect(() => {
+  setMessages(initialMessages)
+}, [initialMessages, sessionId])  // ← Added sessionId here
 ```
+
+This ensures that if sessionId changes, we double-check that messages are in sync.
 
 ## Deployment Status
 

@@ -8,9 +8,9 @@ These tests validate the sessions API by making direct boto3 calls to the Lambda
 """
 
 import json
+
 import boto3
 import pytest
-from botocore.exceptions import ClientError
 
 
 @pytest.fixture
@@ -35,7 +35,9 @@ def invoke_lambda(lambda_client, function_name, event):
 
     response_payload = json.loads(response["Payload"].read())
     if "body" in response_payload:
-        return json.loads(response_payload["body"]), response_payload.get("statusCode", 200)
+        return json.loads(response_payload["body"]), response_payload.get(
+            "statusCode", 200
+        )
     return response_payload, response_payload.get("statusCode", 200)
 
 
@@ -59,7 +61,9 @@ class TestSessionsAPIDirect:
             "isBase64Encoded": False,
         }
 
-        response, status_code = invoke_lambda(lambda_client, "juris-consult-sessions", event)
+        response, status_code = invoke_lambda(
+            lambda_client, "juris-consult-sessions", event
+        )
 
         assert status_code == 200, f"Expected 200, got {status_code}: {response}"
         assert isinstance(response, list), "Response should be a list"
@@ -112,7 +116,9 @@ class TestSessionsAPIDirect:
             "isBase64Encoded": False,
         }
 
-        session_detail, status_code = invoke_lambda(lambda_client, "juris-consult-sessions", detail_event)
+        session_detail, status_code = invoke_lambda(
+            lambda_client, "juris-consult-sessions", detail_event
+        )
 
         assert status_code == 200, f"Expected 200, got {status_code}: {session_detail}"
         assert "sessionId" in session_detail
@@ -170,7 +176,9 @@ class TestSessionsAPIDirect:
                 "isBase64Encoded": False,
             }
 
-            session_detail, _ = invoke_lambda(lambda_client, "juris-consult-sessions", detail_event)
+            session_detail, _ = invoke_lambda(
+                lambda_client, "juris-consult-sessions", detail_event
+            )
             messages = [m["content"] for m in session_detail.get("messages", [])]
 
             if i == 0:
@@ -179,8 +187,9 @@ class TestSessionsAPIDirect:
                 session2_messages = messages
 
         # Verify they're different
-        assert session1_messages != session2_messages, \
+        assert session1_messages != session2_messages, (
             f"Sessions should have different content.\nSession 1: {session1_messages[:2]}\nSession 2: {session2_messages[:2]}"
+        )
 
     def test_sessions_sorted_by_updated(self, lambda_client, user_id):
         """Verify that sessions are sorted by updatedAt (newest first)."""
@@ -205,5 +214,6 @@ class TestSessionsAPIDirect:
             timestamps = [s["updatedAt"] for s in sessions]
             sorted_timestamps = sorted(timestamps, reverse=True)
 
-            assert timestamps == sorted_timestamps, \
+            assert timestamps == sorted_timestamps, (
                 f"Sessions not sorted by updatedAt DESC.\nGot: {timestamps}\nExpected: {sorted_timestamps}"
+            )

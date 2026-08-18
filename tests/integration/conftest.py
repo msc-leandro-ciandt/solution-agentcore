@@ -21,7 +21,10 @@ load_dotenv()
 TEST_EMAIL = os.getenv("TEST_EMAIL", "leanpsilva@gmail.com")
 TEST_PASSWORD = os.getenv("TEST_PASSWORD", "Tifani%04")
 BASE_URL = os.getenv("BASE_URL", "https://main.d3de0r2ujefnqj.amplifyapp.com")
-COGNITO_DOMAIN = os.getenv("COGNITO_DOMAIN", "juris-consult-455303857301-us-east-1.auth.us-east-1.amazoncognito.com")
+COGNITO_DOMAIN = os.getenv(
+    "COGNITO_DOMAIN",
+    "juris-consult-455303857301-us-east-1.auth.us-east-1.amazoncognito.com",
+)
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
 
@@ -48,12 +51,13 @@ def id_token() -> Generator[str, None, None]:
     Requires TEST_EMAIL and TEST_PASSWORD environment variables.
     """
     try:
+        import time
+
         from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options as ChromeOptions
         from selenium.webdriver.common.by import By
         from selenium.webdriver.support import expected_conditions as EC
         from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.chrome.options import Options as ChromeOptions
-        import time
     except ImportError:
         pytest.skip("Selenium not installed - skipping browser-based auth")
         return
@@ -73,15 +77,15 @@ def id_token() -> Generator[str, None, None]:
         # Wait for the Sign In button and click it
         wait = WebDriverWait(driver, 10)
         sign_in_button = wait.until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Sign In')]"))
+            EC.element_to_be_clickable(
+                (By.XPATH, "//button[contains(text(), 'Sign In')]")
+            )
         )
         sign_in_button.click()
 
         # Handle Cognito login page
         # Wait for email input
-        email_input = wait.until(
-            EC.presence_of_element_located((By.ID, "username"))
-        )
+        email_input = wait.until(EC.presence_of_element_located((By.ID, "username")))
         email_input.send_keys(TEST_EMAIL)
 
         # Find and fill password field
@@ -93,9 +97,7 @@ def id_token() -> Generator[str, None, None]:
         submit_button.click()
 
         # Wait for redirect back to the app
-        wait.until(
-            lambda d: BASE_URL in d.current_url
-        )
+        wait.until(lambda d: BASE_URL in d.current_url)
 
         # Give the app time to store the token
         time.sleep(2)
@@ -138,10 +140,12 @@ def authenticated_session(id_token: str):
     import requests
 
     session = requests.Session()
-    session.headers.update({
-        "Authorization": f"Bearer {id_token}",
-        "Content-Type": "application/json",
-    })
+    session.headers.update(
+        {
+            "Authorization": f"Bearer {id_token}",
+            "Content-Type": "application/json",
+        }
+    )
     return session
 
 

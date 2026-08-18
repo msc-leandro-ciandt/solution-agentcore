@@ -11,9 +11,6 @@ Validates the full flow:
 4. Verify that touching a session creates/updates metadata
 """
 
-import json
-from typing import Any, Dict, List
-
 import pytest
 import requests
 
@@ -27,7 +24,9 @@ class TestSessionListing:
         """Verify that GET /sessions returns a list of sessions."""
         response = authenticated_session.get(f"{api_base_url}sessions")
 
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        )
 
         sessions = response.json()
         assert isinstance(sessions, list), "Sessions should be a list"
@@ -59,8 +58,9 @@ class TestSessionListing:
         if len(sessions) > 1:
             timestamps = [session["updatedAt"] for session in sessions]
             # Verify descending order
-            assert timestamps == sorted(timestamps, reverse=True), \
+            assert timestamps == sorted(timestamps, reverse=True), (
                 f"Sessions not sorted by updatedAt DESC. Got: {timestamps}"
+            )
 
 
 class TestSessionDetail:
@@ -106,7 +106,9 @@ class TestSessionDetail:
         for message in messages:
             assert "role" in message, "Message missing role"
             assert "content" in message, "Message missing content"
-            assert message["role"] in ["user", "assistant"], f"Invalid role: {message['role']}"
+            assert message["role"] in ["user", "assistant"], (
+                f"Invalid role: {message['role']}"
+            )
             assert isinstance(message["content"], str)
             assert len(message["content"]) > 0, "Message content should not be empty"
 
@@ -122,28 +124,36 @@ class TestSessionDetail:
             pytest.skip("Need at least 2 sessions to compare")
 
         # Fetch first session
-        session1_response = authenticated_session.get(f"{api_base_url}sessions/{sessions[0]['sessionId']}")
+        session1_response = authenticated_session.get(
+            f"{api_base_url}sessions/{sessions[0]['sessionId']}"
+        )
         session1_messages = session1_response.json().get("messages", [])
         session1_content = [m["content"] for m in session1_messages]
 
         # Fetch second session
-        session2_response = authenticated_session.get(f"{api_base_url}sessions/{sessions[1]['sessionId']}")
+        session2_response = authenticated_session.get(
+            f"{api_base_url}sessions/{sessions[1]['sessionId']}"
+        )
         session2_messages = session2_response.json().get("messages", [])
         session2_content = [m["content"] for m in session2_messages]
 
         # Verify they're different (at least the first user message should differ)
-        assert session1_content != session2_content, \
+        assert session1_content != session2_content, (
             f"Sessions should have different content. Session 1: {session1_content[:2]}, Session 2: {session2_content[:2]}"
+        )
 
     def test_session_not_found_returns_404(
         self, authenticated_session: requests.Session, api_base_url: str
     ):
         """Verify that requesting a non-existent session returns 404."""
         fake_session_id = "00000000-0000-0000-0000-000000000000"
-        response = authenticated_session.get(f"{api_base_url}sessions/{fake_session_id}")
+        response = authenticated_session.get(
+            f"{api_base_url}sessions/{fake_session_id}"
+        )
 
-        assert response.status_code == 404, \
+        assert response.status_code == 404, (
             f"Expected 404 for non-existent session, got {response.status_code}"
+        )
 
     def test_messages_are_in_chronological_order(
         self, authenticated_session: requests.Session, api_base_url: str
@@ -162,8 +172,9 @@ class TestSessionDetail:
         # Verify alternation: user -> assistant -> user -> assistant
         for i, message in enumerate(messages):
             expected_role = "user" if i % 2 == 0 else "assistant"
-            assert message["role"] == expected_role, \
+            assert message["role"] == expected_role, (
                 f"Message {i} should be {expected_role}, got {message['role']}"
+            )
 
 
 class TestTouchSession:
@@ -185,8 +196,9 @@ class TestTouchSession:
             json=payload,
         )
 
-        assert response.status_code == 200, \
+        assert response.status_code == 200, (
             f"Expected 200, got {response.status_code}: {response.text}"
+        )
 
         result = response.json()
         assert "sessionId" in result
@@ -240,6 +252,7 @@ class TestTouchSession:
 
         # Second touch (simulating a new message in the same session)
         import time
+
         time.sleep(1)  # Ensure updatedAt changes
 
         payload2 = {
@@ -254,12 +267,12 @@ class TestTouchSession:
         updated_at_2 = response2.json().get("updatedAt")
 
         # Title should be the same
-        assert title1 == title2, \
-            f"Title should be preserved: '{title1}' vs '{title2}'"
+        assert title1 == title2, f"Title should be preserved: '{title1}' vs '{title2}'"
 
         # updatedAt should have changed
-        assert updated_at_1 != updated_at_2, \
-            f"updatedAt should have changed on second touch"
+        assert updated_at_1 != updated_at_2, (
+            "updatedAt should have changed on second touch"
+        )
 
 
 class TestDeleteSession:
@@ -283,8 +296,9 @@ class TestDeleteSession:
         # Now delete it
         response = authenticated_session.delete(f"{api_base_url}sessions/{session_id}")
 
-        assert response.status_code == 200, \
+        assert response.status_code == 200, (
             f"Expected 200, got {response.status_code}: {response.text}"
+        )
 
         result = response.json()
         assert result.get("success") is True
@@ -293,7 +307,9 @@ class TestDeleteSession:
         self, authenticated_session: requests.Session, api_base_url: str
     ):
         """Verify that a deleted session no longer appears in the list."""
-        session_id = "test-session-delete-list-" + str(hash("delete_list_test") % 10000000)
+        session_id = "test-session-delete-list-" + str(
+            hash("delete_list_test") % 10000000
+        )
 
         # Create a session
         payload = {
@@ -307,7 +323,9 @@ class TestDeleteSession:
         # Verify it appears in list
         list_response1 = authenticated_session.get(f"{api_base_url}sessions")
         session_ids_before = [s["sessionId"] for s in list_response1.json()]
-        assert session_id in session_ids_before, "Session should appear in list after creation"
+        assert session_id in session_ids_before, (
+            "Session should appear in list after creation"
+        )
 
         # Delete it
         authenticated_session.delete(f"{api_base_url}sessions/{session_id}")
@@ -315,4 +333,6 @@ class TestDeleteSession:
         # Verify it's gone from list
         list_response2 = authenticated_session.get(f"{api_base_url}sessions")
         session_ids_after = [s["sessionId"] for s in list_response2.json()]
-        assert session_id not in session_ids_after, "Session should not appear in list after deletion"
+        assert session_id not in session_ids_after, (
+            "Session should not appear in list after deletion"
+        )

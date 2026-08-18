@@ -190,6 +190,7 @@ export default function ChatPage() {
                 key={sessionId}
                 sessionId={sessionId}
                 initialMessages={initialMessages}
+                idToken={idToken}
                 onRequestNewChat={handleNewChat}
                 onSessionTouched={refreshSessions}
               />

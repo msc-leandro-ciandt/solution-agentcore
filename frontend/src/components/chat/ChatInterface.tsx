@@ -21,6 +21,8 @@ interface ChatInterfaceProps {
   sessionId: string
   /** Messages to hydrate with when resuming a past session. Empty for a new chat. */
   initialMessages: Message[]
+  /** ID token for API authentication */
+  idToken?: string
   /** Requests that the parent start a brand new session (fresh UUID, empty history). */
   onRequestNewChat: () => void
   /** Notifies the parent that a "touch" (session metadata upsert) succeeded,
@@ -31,10 +33,11 @@ interface ChatInterfaceProps {
 export default function ChatInterface({
   sessionId,
   initialMessages,
+  idToken,
   onRequestNewChat,
   onSessionTouched,
 }: ChatInterfaceProps) {
-  console.log(`[ChatInterface] Mounted/Updated with sessionId: ${sessionId}, messages: ${initialMessages?.length || 0}`)
+  console.log(`[ChatInterface] Mounted/Updated with sessionId: ${sessionId}, messages: ${initialMessages?.length || 0}, idToken available: ${!!idToken}`)
   
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState("")
@@ -226,16 +229,21 @@ export default function ChatInterface({
       // not block the UI, so errors are logged but not surfaced to the user —
       // a failed touch only means the sidebar entry is stale, not that the
       // chat itself failed.
-      const idTokenForTouch = auth.user?.id_token
-      if (idTokenForTouch) {
+      if (idToken) {
         const latestMessages = messagesRef.current
         const firstUserMessage = latestMessages.find(m => m.role === "user")?.content
         const firstAssistantMessage = latestMessages.find(m => m.role === "assistant")?.content
         if (firstUserMessage) {
-          touchSession(sessionId, firstUserMessage, firstAssistantMessage, idTokenForTouch)
-            .then(() => onSessionTouched?.())
-            .catch(err => console.error("Failed to touch session:", err))
+          console.log(`[ChatInterface] Touching session ${sessionId} to create metadata...`)
+          touchSession(sessionId, firstUserMessage, firstAssistantMessage, idToken)
+            .then(() => {
+              console.log(`[ChatInterface] Session touched successfully`)
+              onSessionTouched?.()
+            })
+            .catch(err => console.error("[ChatInterface] Failed to touch session:", err))
         }
+      } else {
+        console.warn("[ChatInterface] No idToken available for session touch")
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error"

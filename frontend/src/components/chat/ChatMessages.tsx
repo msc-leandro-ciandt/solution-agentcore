@@ -32,7 +32,7 @@ export function ChatMessages({
       ) : (
         messages.map((message, index) => (
           <ChatMessage
-            key={index}
+            key={`${sessionId}-${index}-${message.timestamp}`}
             message={message}
             sessionId={sessionId}
             onFeedbackSubmit={async (feedbackType, comment) => {

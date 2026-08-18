@@ -161,10 +161,11 @@ class TestSessionLoadingBehavior:
             f"BUG: setInitialMessages (line {initial_msg_line}) must come BEFORE setSessionId (line {session_id_line})!\n"
         )
 
-        print("\n✅ ChatPage.tsx state order is CORRECT:")
+        print("\n✅ ChatPage.tsx session switching fix is CORRECT:")
+        print("   Key pattern: isHydrating(true) → fetch messages → update state → isHydrating(false)")
         print(f"   Line {initial_msg_line}: setInitialMessages(loadedMessages)")
         print(f"   Line {session_id_line}: setSessionId(session.sessionId)")
-        print("   → This ensures ChatInterface remounts with correct data")
+        print("   → Ensures ChatInterface remounts with correct data")
 
     def test_chat_interface_has_key_binding(self):
         """
